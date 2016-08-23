@@ -1,0 +1,35 @@
+*.DS_Store
+*.log
+*.mo
+*.pyc
+*.sqlite
+/.*
+!.coveragerc
+!.gitignore
+!.mailmap
+!.testr.conf
+.*.sw?
+AUTHORS
+Authors
+build/*
+build-stamp
+CA/
+ChangeLog
+cinder.egg-info
+cover/*
+covhtml
+dist/*
+etc/cinder/cinder.conf.sample
+instances
+keeper
+keys
+local_settings.py
+tools/conf/cinder.conf*
+tools/lintstack.head.py
+tools/pylint_exceptions
+tags
+# Files created by Sphinx build
+doc/build
+
+# Files created by releasenotes build
+releasenotes/build
