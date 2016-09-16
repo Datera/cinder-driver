@@ -16,9 +16,9 @@
 import functools
 import json
 import re
-import time
 import uuid
 
+import eventlet
 import ipaddress
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -34,14 +34,10 @@ from cinder import interface
 from cinder import utils
 from cinder.volume.drivers.san import san
 from cinder.volume import qos_specs
+from cinder.volume import utils as volutils
 from cinder.volume import volume_types
 
-# import sys
-# import logging
-# logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
-# LOG = logging.getLogger(__name__)
-LOG = logging.getLogger()
-# LOG.setLevel(logging.DEBUG)
+LOG = logging.getLogger(__name__)
 
 d_opts = [
     cfg.StrOpt('datera_api_port',
@@ -50,6 +46,10 @@ d_opts = [
     cfg.StrOpt('datera_api_version',
                default='2',
                help='Datera API version.'),
+    cfg.IntOpt('datera_num_replicas',
+               default='3',
+               deprecated_for_removal=True,
+               help='Number of replicas to create of an inode.'),
     cfg.IntOpt('datera_503_timeout',
                default='120',
                help='Timeout for HTTP 503 retry messages'),
@@ -59,6 +59,11 @@ d_opts = [
     cfg.BoolOpt('datera_debug',
                 default=False,
                 help="True to set function arg and return logging"),
+    cfg.BoolOpt('datera_acl_allow_all',
+                default=False,
+                deprecated_for_removal=True,
+                help="True to set acl 'allow_all' on volumes "
+                     "created"),
     cfg.BoolOpt('datera_debug_replica_count_override',
                 default=False,
                 help="ONLY FOR DEBUG/TESTING PURPOSES\n"
@@ -75,7 +80,7 @@ INITIATOR_GROUP_PREFIX = "IG-"
 OS_PREFIX = "OS-"
 UNMANAGE_PREFIX = "UNMANAGED-"
 
-# Taken from this SO post:
+# Taken from this SO post :
 # http://stackoverflow.com/a/18516125
 # Using old-style string formatting because of the nature of the regex
 # conflicting with new-style curly braces
@@ -142,9 +147,12 @@ class DateraDriver(san.SanISCSIDriver):
         2.0 - Update For Datera API v2
         2.1 - Multipath, ACL and reorg
         2.2 - Capabilites List, Extended Volume-Type Support
-              Naming convention change, Volume re-type support
+              Naming convention change,
+              Volume Manage/Unmanage support
     """
     VERSION = '2.2'
+
+    CI_WIKI_NAME = "datera-ci"
 
     def __init__(self, *args, **kwargs):
         super(DateraDriver, self).__init__(*args, **kwargs)
@@ -389,8 +397,8 @@ class DateraDriver(san.SanISCSIDriver):
                                     conflict_ok=True)
             # Create ACL with initiator group as reference for each
             # storage_instance in app_instance
-            # TODO: We need to avoid changing the ACLs if the template already
-            # specifies an ACL policy.
+            # TODO(_alastor_): We need to avoid changing the ACLs if the
+            # template already specifies an ACL policy.
             for si_name in storage_instances.keys():
                 acl_url = (URL_TEMPLATES['si']() + "/{}/acl_policy").format(
                     _get_name(volume['id']), si_name)
@@ -437,13 +445,13 @@ class DateraDriver(san.SanISCSIDriver):
             msg = _LI("Tried to detach volume %s, but it was not found in the "
                       "Datera cluster. Continuing with detach.")
             LOG.info(msg, volume['id'])
-        # TODO: Make acl cleaning multi-attach aware
+        # TODO(_alastor_): Make acl cleaning multi-attach aware
         self._clean_acl(volume)
 
     def _check_for_acl(self, initiator_path):
-        """ Returns True if an acl is found for initiator_path """
-        # TODO when we get a /initiators/:initiator/acl_policies endpoint
-        # use that instead of this monstrosity
+        """Returns True if an acl is found for initiator_path """
+        # TODO(_alastor_) when we get a /initiators/:initiator/acl_policies
+        # endpoint use that instead of this monstrosity
         initiator_groups = self._issue_api_request("initiator_groups")
         for ig, igdata in initiator_groups.items():
             if initiator_path in igdata['members']:
@@ -539,7 +547,8 @@ class DateraDriver(san.SanISCSIDriver):
             body=app_params)
 
     def manage_existing(self, volume, existing_ref):
-        """
+        """Manage an existing volume on the Datera backend
+
         The existing_ref must be either the current name or Datera UUID of
         an app_instance on the Datera backend in a colon separated list with
         the storage instance name and volume name.  This means only
@@ -557,17 +566,19 @@ class DateraDriver(san.SanISCSIDriver):
         existing_ref = existing_ref['source-name']
         if existing_ref.count(":") != 2:
             raise exception.ManageExistingInvalidReference(
-                "existing_ref argument must be of this format:"
-                "app_inst_name:storage_inst_name:vol_name")
+                _("existing_ref argument must be of this format:"
+                  "app_inst_name:storage_inst_name:vol_name"))
         app_inst_name = existing_ref.split(":")[0]
-        LOG.debug("Managing existing Datera volume %s.  Changing name to %s",
-                  existing_ref, _get_name(volume['id']))
+        LOG.debug("Managing existing Datera volume %(volume)s.  "
+                  "Changing name to %(existing)s",
+                  existing=existing_ref, volume=_get_name(volume['id']))
         data = {'name': _get_name(volume['id'])}
         self._issue_api_request(URL_TEMPLATES['ai_inst']().format(
             app_inst_name), method='put', body=data)
 
     def manage_existing_get_size(self, volume, existing_ref):
-        """
+        """Get the size of an unmanaged volume on the Datera backend
+
         The existing_ref must be either the current name or Datera UUID of
         an app_instance on the Datera backend in a colon separated list with
         the storage instance name and volume name.  This means only
@@ -580,19 +591,21 @@ class DateraDriver(san.SanISCSIDriver):
 
         :param volume:       Cinder volume to manage
         :param existing_ref: Driver-specific information used to identify a
+                             volume on the Datera backend
         """
         existing_ref = existing_ref['source-name']
         if existing_ref.count(":") != 2:
             raise exception.ManageExistingInvalidReference(
-                "existing_ref argument must be of this format:"
-                "app_inst_name:storage_inst_name:vol_name")
+                _("existing_ref argument must be of this format:"
+                  "app_inst_name:storage_inst_name:vol_name"))
         app_inst_name, si_name, vol_name = existing_ref.split(":")
         app_inst = self._issue_api_request(
             URL_TEMPLATES['ai_inst']().format(app_inst_name))
         return self._get_size(volume, app_inst, si_name, vol_name)
 
     def _get_size(self, volume, app_inst=None, si_name=None, vol_name=None):
-        """
+        """Helper method for getting the size of a backend object
+
         If app_inst is provided, we'll just parse the dict to get
         the size instead of making a separate http request
         """
@@ -673,7 +686,10 @@ class DateraDriver(san.SanISCSIDriver):
                 'cinder_id': cinder_id,
                 'extra_info': extra_info})
 
-        return results
+        page_results = volutils.paginate_entries_list(
+            results, marker, limit, offset, sort_keys, sort_dirs)
+
+        return page_results
 
     def _is_manageable(self, app_inst):
         if len(app_inst['storage_instances']) == 1:
@@ -683,7 +699,8 @@ class DateraDriver(san.SanISCSIDriver):
         return False
 
     def unmanage(self, volume):
-        """
+        """Unmanage a currently managed volume in Cinder
+
         :param volume:       Cinder volume to unmanage
         """
         LOG.debug("Unmanaging Cinder volume %s.  Changing name to %s",
@@ -691,19 +708,6 @@ class DateraDriver(san.SanISCSIDriver):
         data = {'name': _get_unmanaged(volume['id'])}
         self._issue_api_request(URL_TEMPLATES['ai_inst']().format(
             _get_name(volume['id'])), method='put', body=data)
-
-    def retype(self, context, volume, new_type, diff, host):
-        """Retypes a volume, allow QoS and extra_specs change."""
-        LOG.debug('Datera retype called for volume %s. Starting '
-                  'retype...', _get_name(volume['id']))
-        # IP Pools are handled at export creation time
-        # Change QoS to new type values
-
-        # TODO(_alastor_) check to ensure num_replicas is not decreasing
-        # with this call
-        policies = self._get_policies_for_resource(new_type)
-        self._update_qos(volume, policies)
-        return True, None
 
     def get_volume_stats(self, refresh=False):
         """Get volume stats.
@@ -961,7 +965,7 @@ class DateraDriver(san.SanISCSIDriver):
 
     def _si_poll(self, volume, policies):
         # Initial 4 second sleep required for some Datera versions
-        time.sleep(DEFAULT_SI_SLEEP)
+        eventlet.sleep(DEFAULT_SI_SLEEP)
         TIMEOUT = 10
         retry = 0
         check_url = URL_TEMPLATES['si_inst'](
@@ -973,7 +977,7 @@ class DateraDriver(san.SanISCSIDriver):
             if si['op_state'] == 'available':
                 poll = False
             else:
-                time.sleep(1)
+                eventlet.sleep(1)
         if retry >= TIMEOUT:
             raise exception.VolumeDriverException(
                 message=_('Resource not ready.'))
@@ -995,7 +999,7 @@ class DateraDriver(san.SanISCSIDriver):
                 self._issue_api_request(url, 'post', body=fpolicies)
 
     def _get_ip_pool_for_string_ip(self, ip):
-        """ Takes a string ipaddress and return the ip_pool API object dict """
+        """Takes a string ipaddress and return the ip_pool API object dict """
         pool = 'default'
         ip_obj = ipaddress.ip_address(six.text_type(ip))
         ip_pools = self._issue_api_request("access_network_ip_pools")
@@ -1057,11 +1061,10 @@ class DateraDriver(san.SanISCSIDriver):
             # Don't raise, because we're expecting a conflict
             pass
         elif response.status_code == 503:
-            # TODO Try again here
             current_retry = 0
             while current_retry <= self.retry_attempts:
                 LOG.debug("Datera 503 response, trying request again")
-                time.sleep(self.interval)
+                eventlet.sleep(self.interval)
                 resp = self._request(connection_string,
                                      method,
                                      payload,
@@ -1092,7 +1095,8 @@ class DateraDriver(san.SanISCSIDriver):
         payload = json.dumps(body, ensure_ascii=False)
         payload.encode('utf-8')
 
-        header = {'Content-Type': 'application/json; charset=utf-8'}
+        header = {'Content-Type': 'application/json; charset=utf-8',
+                  'Datera-Driver': 'OpenStack-Cinder-{}'.format(self.VERSION)}
 
         protocol = 'http'
         if self.configuration.driver_use_ssl:
