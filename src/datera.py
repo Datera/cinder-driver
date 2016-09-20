@@ -29,7 +29,7 @@ import six
 
 from cinder import context
 from cinder import exception
-from cinder.i18n import _, _LE, _LI
+from cinder.i18n import _, _LE, _LI, _LW
 from cinder import interface
 from cinder import utils
 from cinder.volume.drivers.san import san
@@ -46,10 +46,6 @@ d_opts = [
     cfg.StrOpt('datera_api_version',
                default='2',
                help='Datera API version.'),
-    cfg.IntOpt('datera_num_replicas',
-               default='3',
-               deprecated_for_removal=True,
-               help='Number of replicas to create of an inode.'),
     cfg.IntOpt('datera_503_timeout',
                default='120',
                help='Timeout for HTTP 503 retry messages'),
@@ -59,11 +55,6 @@ d_opts = [
     cfg.BoolOpt('datera_debug',
                 default=False,
                 help="True to set function arg and return logging"),
-    cfg.BoolOpt('datera_acl_allow_all',
-                default=False,
-                deprecated_for_removal=True,
-                help="True to set acl 'allow_all' on volumes "
-                     "created"),
     cfg.BoolOpt('datera_debug_replica_count_override',
                 default=False,
                 help="ONLY FOR DEBUG/TESTING PURPOSES\n"
@@ -76,6 +67,7 @@ CONF.import_opt('driver_use_ssl', 'cinder.volume.driver')
 CONF.register_opts(d_opts)
 
 DEFAULT_SI_SLEEP = 10
+DEFAULT_SNAP_SLEEP = 5
 INITIATOR_GROUP_PREFIX = "IG-"
 OS_PREFIX = "OS-"
 UNMANAGE_PREFIX = "UNMANAGED-"
@@ -101,7 +93,8 @@ URL_TEMPLATES = {
         (URL_TEMPLATES['si_inst'](storage_name) + '/volumes')),
     'vol_inst': lambda storage_name, volume_name: (
         (URL_TEMPLATES['vol'](storage_name) + '/{}').format(
-            '{}', volume_name))}
+            '{}', volume_name)),
+    'at': lambda: 'app_templates/{}'}
 
 
 def _get_name(name):
@@ -183,11 +176,10 @@ class DateraDriver(san.SanISCSIDriver):
         self._login()
 
     @utils.retry(exception.VolumeDriverException, retries=3)
-    def _wait_for_resource(self, id, resource_type, policies):
+    def _wait_for_resource(self, id, resource_type, store_name, vol_name):
         result = self._issue_api_request(resource_type, 'get', id)
-        if result['storage_instances'][
-                policies['default_storage_name']]['volumes'][
-                policies['default_volume_name']]['op_state'] == 'available':
+        if result['storage_instances'][store_name]['volumes'][
+                vol_name]['op_state'] == 'available':
             return
         else:
             raise exception.VolumeDriverException(
@@ -207,16 +199,16 @@ class DateraDriver(san.SanISCSIDriver):
             raise
         else:
             policies = self._get_policies_for_resource(resource)
+            store_name, vol_name = self._scrape_template(policies)
             # Handle updating QOS Policies
             if resource_type == URL_TEMPLATES['ai']():
                 self._update_qos(resource, policies)
-            if result['storage_instances'][policies['default_storage_name']][
-                    'volumes'][policies['default_volume_name']][
-                        'op_state'] == 'available':
+            if result['storage_instances'][store_name]['volumes'][vol_name][
+                    'op_state'] == 'available':
                 return
             self._wait_for_resource(_get_name(resource['id']),
                                     resource_type,
-                                    policies)
+                                    store_name, vol_name)
 
     def create_volume(self, volume):
         """Create a logical volume."""
@@ -227,31 +219,52 @@ class DateraDriver(san.SanISCSIDriver):
         num_replicas = int(policies['replica_count'])
         storage_name = policies['default_storage_name']
         volume_name = policies['default_volume_name']
+        template = policies['template']
 
-        app_params = (
-            {
-                'create_mode': "openstack",
-                'uuid': str(volume['id']),
-                'name': _get_name(volume['id']),
-                'access_control_mode': 'deny_all',
-                'storage_instances': {
-                    storage_name: {
-                        'name': storage_name,
-                        'volumes': {
-                            volume_name: {
-                                'name': volume_name,
-                                'size': volume['size'],
-                                'replica_count': num_replicas,
-                                'snapshot_policies': {
+        if template:
+            app_params = (
+                {
+                    'create_mode': "openstack",
+                    # 'uuid': str(volume['id']),
+                    'name': _get_name(volume['id']),
+                    'app_template': '/app_templates/{}'.format(template)
+                })
+        else:
+
+            app_params = (
+                {
+                    'create_mode': "openstack",
+                    'uuid': str(volume['id']),
+                    'name': _get_name(volume['id']),
+                    'access_control_mode': 'deny_all',
+                    'storage_instances': {
+                        storage_name: {
+                            'name': storage_name,
+                            'volumes': {
+                                volume_name: {
+                                    'name': volume_name,
+                                    'size': volume['size'],
+                                    'replica_count': num_replicas,
+                                    'snapshot_policies': {
+                                    }
                                 }
                             }
                         }
                     }
-                }
-            })
+                })
         self._create_resource(volume, URL_TEMPLATES['ai'](), body=app_params)
 
     def extend_volume(self, volume, new_size):
+        # Current product limitation:
+        # If app_instance is bound to template resizing is not possible
+        # Once policies are implemented in the product this can go away
+        policies = self._get_policies_for_resource(volume)
+        template = policies['template']
+        if template:
+            LOG.warn(_LW("Volume size not extended due to template binding: "
+                         "volume: %s, template: %s"), volume, template)
+            return
+
         # Offline App Instance, if necessary
         reonline = False
         app_inst = self._issue_api_request(
@@ -277,9 +290,11 @@ class DateraDriver(san.SanISCSIDriver):
 
     def create_cloned_volume(self, volume, src_vref):
         policies = self._get_policies_for_resource(volume)
+
+        store_name, vol_name = self._scrape_template(policies)
+
         src = "/" + URL_TEMPLATES['vol_inst'](
-            policies['default_storage_name'],
-            policies['default_volume_name']).format(_get_name(src_vref['id']))
+            store_name, vol_name).format(_get_name(src_vref['id']))
         data = {
             'create_mode': 'openstack',
             'name': _get_name(volume['id']),
@@ -364,6 +379,9 @@ class DateraDriver(san.SanISCSIDriver):
         # Handle adding initiator to product if necessary
         # Then add initiator to ACL
         policies = self._get_policies_for_resource(volume)
+
+        store_name, _ = self._scrape_template(policies)
+
         if (connector and
                 connector.get('initiator') and
                 not policies['acl_allow_all']):
@@ -420,8 +438,7 @@ class DateraDriver(san.SanISCSIDriver):
                         connector['ip'])
 
                 ip_pool_url = URL_TEMPLATES['si_inst'](
-                    policies['default_storage_name']).format(
-                    _get_name(volume['id']))
+                    store_name).format(_get_name(volume['id']))
                 ip_pool_data = {'ip_pool': initiator_ip_pool_path}
                 self._issue_api_request(ip_pool_url,
                                         method="put",
@@ -463,9 +480,11 @@ class DateraDriver(san.SanISCSIDriver):
 
     def _clean_acl(self, volume):
         policies = self._get_policies_for_resource(volume)
+
+        store_name, _ = self._scrape_template(policies)
+
         acl_url = (URL_TEMPLATES["si_inst"](
-            policies['default_storage_name']) + "/acl_policy").format(
-            _get_name(volume['id']))
+            store_name) + "/acl_policy").format(_get_name(volume['id']))
         try:
             initiator_group = self._issue_api_request(acl_url)[
                 'initiator_groups'][0]
@@ -486,21 +505,27 @@ class DateraDriver(san.SanISCSIDriver):
 
     def create_snapshot(self, snapshot):
         policies = self._get_policies_for_resource(snapshot)
+
+        store_name, vol_name = self._scrape_template(policies)
+
         url_template = URL_TEMPLATES['vol_inst'](
-            policies['default_storage_name'],
-            policies['default_volume_name']) + '/snapshots'
+            store_name, vol_name) + '/snapshots'
         url = url_template.format(_get_name(snapshot['volume_id']))
 
         snap_params = {
             'uuid': snapshot['id'],
         }
-        self._issue_api_request(url, method='post', body=snap_params)
+        snap = self._issue_api_request(url, method='post', body=snap_params)
+        snapu = "/".join(url, snap['timestamp'])
+        self._snap_poll(snapu)
 
     def delete_snapshot(self, snapshot):
         policies = self._get_policies_for_resource(snapshot)
+
+        store_name, vol_name = self._scrape_template(policies)
+
         snap_temp = URL_TEMPLATES['vol_inst'](
-            policies['default_storage_name'],
-            policies['default_volume_name']) + '/snapshots'
+            store_name, vol_name) + '/snapshots'
         snapu = snap_temp.format(_get_name(snapshot['volume_id']))
         snapshots = self._issue_api_request(snapu, method='get')
 
@@ -520,9 +545,11 @@ class DateraDriver(san.SanISCSIDriver):
 
     def create_volume_from_snapshot(self, volume, snapshot):
         policies = self._get_policies_for_resource(snapshot)
+
+        store_name, vol_name = self._scrape_template(policies)
+
         snap_temp = URL_TEMPLATES['vol_inst'](
-            policies['default_storage_name'],
-            policies['default_volume_name']) + '/snapshots'
+            store_name, vol_name) + '/snapshots'
         snapu = snap_temp.format(_get_name(snapshot['volume_id']))
         snapshots = self._issue_api_request(snapu, method='get')
         for ts, snap in snapshots.items():
@@ -532,8 +559,12 @@ class DateraDriver(san.SanISCSIDriver):
         else:
             raise exception.NotFound
 
-        src = "/" + (snap_temp + '/{}').format(
+        snap_url = (snap_temp + '/{}').format(
             _get_name(snapshot['volume_id']), found_ts)
+
+        self._snap_poll(snap_url)
+
+        src = "/" + snap_url
         app_params = (
             {
                 'create_mode': 'openstack',
@@ -691,13 +722,6 @@ class DateraDriver(san.SanISCSIDriver):
 
         return page_results
 
-    def _is_manageable(self, app_inst):
-        if len(app_inst['storage_instances']) == 1:
-            si = list(app_inst['storage_instances'].values())[0]
-            if len(si['volumes']) == 1:
-                return True
-        return False
-
     def unmanage(self, volume):
         """Unmanage a currently managed volume in Cinder
 
@@ -724,6 +748,25 @@ class DateraDriver(san.SanISCSIDriver):
                 LOG.error(_LE('Failed to get updated stats from Datera '
                               'cluster.'))
         return self.cluster_stats
+
+    def _is_manageable(self, app_inst):
+        if len(app_inst['storage_instances']) == 1:
+            si = list(app_inst['storage_instances'].values())[0]
+            if len(si['volumes']) == 1:
+                return True
+        return False
+
+    def _scrape_template(self, policies):
+        sname = policies['default_storage_name']
+        vname = policies['default_volume_name']
+
+        template = policies['template']
+        if template:
+            result = self._issue_api_request(
+                URL_TEMPLATES['at']().format(template))
+            sname, st = list(result['storage_templates'].items())[0]
+            vname = list(st['volume_templates'].keys())[0]
+        return sname, vname
 
     def _update_cluster_stats(self):
         LOG.debug("Updating cluster stats info.")
@@ -835,6 +878,14 @@ class DateraDriver(san.SanISCSIDriver):
             _("Specifies IP pool to use for volume"),
             "string",
             default="default")
+
+        self._set_property(
+            properties,
+            "DF:template",
+            "Datera Template",
+            _("Specifies Template to use for volume provisioning"),
+            "string",
+            default="")
 
         # ###### QoS Settings ###### #
         self._set_property(
@@ -962,6 +1013,22 @@ class DateraDriver(san.SanISCSIDriver):
             except ValueError:
                 pass
         return policies
+
+    def _snap_poll(self, url):
+        eventlet.sleep(DEFAULT_SNAP_SLEEP)
+        TIMEOUT = 10
+        retry = 0
+        poll = True
+        while poll and not retry >= TIMEOUT:
+            retry += 1
+            snap = self._issue_api_request(url)
+            if snap['op_state'] == 'available':
+                poll = False
+            else:
+                eventlet.sleep(1)
+        if retry >= TIMEOUT:
+            raise exception.VolumeDriverException(
+                message=_('Snapshot not ready.'))
 
     def _si_poll(self, volume, policies):
         # Initial 4 second sleep required for some Datera versions
