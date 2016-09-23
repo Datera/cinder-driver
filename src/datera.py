@@ -16,6 +16,7 @@
 import functools
 import json
 import re
+import time
 import uuid
 
 import eventlet
@@ -45,6 +46,7 @@ d_opts = [
                help='Datera API port.'),
     cfg.StrOpt('datera_api_version',
                default='2',
+               deprecated_for_removal=True,
                help='Datera API version.'),
     cfg.IntOpt('datera_503_timeout',
                default='120',
@@ -58,7 +60,15 @@ d_opts = [
     cfg.BoolOpt('datera_debug_replica_count_override',
                 default=False,
                 help="ONLY FOR DEBUG/TESTING PURPOSES\n"
-                     "True to set replica_count to 1")
+                     "True to set replica_count to 1"),
+    cfg.StrOpt('datera_tenant_id',
+               default=None,
+               help="If set to 'Map' --> OpenStack project ID will be mapped "
+                    "implicitly to Datera tenant ID\n"
+                    "If set to 'None' --> Datera tenant ID will not be used "
+                    "during volume provisioning\n"
+                    "If set to anything else --> Datera tenant ID will be the "
+                    "provided value")
 ]
 
 
@@ -71,6 +81,8 @@ DEFAULT_SNAP_SLEEP = 5
 INITIATOR_GROUP_PREFIX = "IG-"
 OS_PREFIX = "OS-"
 UNMANAGE_PREFIX = "UNMANAGED-"
+API_VERSIONS = ["2", "2.1"]
+API_TIMEOUT = 20
 
 # Taken from this SO post :
 # http://stackoverflow.com/a/18516125
@@ -123,9 +135,70 @@ def _authenticated(func):
                 raise
 
             # Token might've expired, get a new one, try again.
-            self._login()
+            self.login()
             return func(self, *args, **kwargs)
     return func_wrapper
+
+
+def _api_lookup(func):
+    """Perform a dynamic API implementation lookup for a call
+
+    Naming convention follows this pattern:
+
+        # original_func(args) --> _original_func_X_?Y?(args)
+        # where X and Y are the major and minor versions of the latest
+        # supported API version
+
+        # From the Datera box we've determined that it supports API
+        # versions ['2', '2.1']
+        # This is the original function call
+        @_api_lookup
+        def original_func(arg1, arg2):
+            print("I'm a shim, this won't get executed!")
+            pass
+
+        # This is the function that is actually called after determining
+        # the correct API version to use
+        def _original_func_2_1(arg1, arg2):
+            some_version_2_1_implementation_here()
+
+        # This is the function that would be called if the previous function
+        # did not exist:
+        def _original_func_2(arg1, arg2):
+            some_version_2_implementation_here()
+
+        # This function would NOT be called, because the connected Datera box
+        # does not support the 1.5 version of the API
+        def _original_func_1_5(arg1, arg2):
+            some_version_1_5_implementation_here()
+    """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        obj = args[0]
+        api_versions = obj._get_supported_api_versions()
+        api_version = None
+        index = -1
+        while True:
+            try:
+                api_version = api_versions[index]
+            except (IndexError, KeyError):
+                msg = _("No compatible API version found for this product: "
+                        "api_versions -> %s")
+                LOG.error(msg, api_version)
+                raise exception.DateraAPIException(msg % api_version)
+            name = "_" + "_".join(
+                (func.func_name, api_version.replace(".", "_")))
+            try:
+                return getattr(obj, name)(*args[1:], **kwargs)
+            except (AttributeError, NotImplementedError):
+                index -= 1
+            except exception.DateraAPIException as e:
+                if "UnsupportedVersionError" in e[0]:
+                    index -= 1
+                else:
+                    raise
+
+    return wrapper
 
 
 @interface.volumedriver
@@ -142,8 +215,10 @@ class DateraDriver(san.SanISCSIDriver):
         2.2 - Capabilites List, Extended Volume-Type Support
               Naming convention change,
               Volume Manage/Unmanage support
+        2.3 - Templates, Tenants, Snapshot Polling,
+              2.1 Api Version Support
     """
-    VERSION = '2.2'
+    VERSION = '2.3'
 
     CI_WIKI_NAME = "datera-ci"
 
@@ -159,9 +234,13 @@ class DateraDriver(san.SanISCSIDriver):
                                self.interval)
         self.driver_prefix = str(uuid.uuid4())[:4]
         self.datera_debug = self.configuration.datera_debug
+        self.datera_api_versions = []
 
         if self.datera_debug:
             utils.setup_tracing(['method'])
+        self.tenant_id = self.configuration.datera_tenant_id
+        self.api_check = time.time()
+        self.api_cache = []
 
     def do_setup(self, context):
         # If we can't authenticate through the old and new method, just fail
@@ -173,45 +252,22 @@ class DateraDriver(san.SanISCSIDriver):
             LOG.error(msg)
             raise exception.InvalidInput(msg)
 
-        self._login()
+        self.login()
+        # Create the Datera tenant if specified in the config
+        tid = self.tenant_id.lower() if self.tenant_id else self.tenant_id
+        if tid is not None and tid != 'map':
+            self._create_tenant(self.tenant_id)
 
-    @utils.retry(exception.VolumeDriverException, retries=3)
-    def _wait_for_resource(self, id, resource_type, store_name, vol_name):
-        result = self._issue_api_request(resource_type, 'get', id)
-        if result['storage_instances'][store_name]['volumes'][
-                vol_name]['op_state'] == 'available':
-            return
-        else:
-            raise exception.VolumeDriverException(
-                message=_('Resource not ready.'))
+    # =================
+    # = Create Volume =
+    # =================
 
-    def _create_resource(self, resource, resource_type, body):
-
-        result = None
-        try:
-            result = self._issue_api_request(resource_type, 'post', body=body)
-        except exception.Invalid:
-            type_id = resource.get('volume_type_id', None)
-            if resource_type == 'volumes' and type_id:
-                LOG.error(_LE("Creation request failed. Please verify the "
-                              "extra-specs set for your volume types are "
-                              "entered correctly."))
-            raise
-        else:
-            policies = self._get_policies_for_resource(resource)
-            store_name, vol_name = self._scrape_template(policies)
-            # Handle updating QOS Policies
-            if resource_type == URL_TEMPLATES['ai']():
-                self._update_qos(resource, policies)
-            if result['storage_instances'][store_name]['volumes'][vol_name][
-                    'op_state'] == 'available':
-                return
-            self._wait_for_resource(_get_name(resource['id']),
-                                    resource_type,
-                                    store_name, vol_name)
-
+    @_api_lookup
     def create_volume(self, volume):
         """Create a logical volume."""
+        pass
+
+    def _create_volume_2(self, volume):
         # Generate App Instance, Storage Instance and Volume
         # Volume ID will be used as the App Instance Name
         # Storage Instance and Volumes will have standard names
@@ -252,9 +308,65 @@ class DateraDriver(san.SanISCSIDriver):
                         }
                     }
                 })
-        self._create_resource(volume, URL_TEMPLATES['ai'](), body=app_params)
+        self._issue_api_request(
+            URL_TEMPLATES['ai'](), 'post', body=app_params, api_version='2')
+        self._update_qos(volume, policies)
 
+    def _create_volume_2_1(self, volume):
+        raise NotImplementedError()
+        policies = self._get_policies_for_resource(volume)
+        num_replicas = int(policies['replica_count'])
+        storage_name = policies['default_storage_name']
+        volume_name = policies['default_volume_name']
+        template = policies['template']
+
+        if template:
+            app_params = (
+                {
+                    'create_mode': "openstack",
+                    # 'uuid': str(volume['id']),
+                    'name': _get_name(volume['id']),
+                    'app_template': '/app_templates/{}'.format(template)
+                })
+
+        else:
+
+            app_params = (
+                {
+                    'create_mode': "openstack",
+                    'uuid': str(volume['id']),
+                    'name': _get_name(volume['id']),
+                    'access_control_mode': 'deny_all',
+                    'storage_instances': [
+                        {
+                            'name': storage_name,
+                            'volumes': [
+                                {
+                                    'name': volume_name,
+                                    'size': volume['size'],
+                                    'replica_count': num_replicas,
+                                    'snapshot_policies': [
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                })
+        self._issue_api_request(
+            URL_TEMPLATES['ai'](), 'post', body=app_params, api_version='2.1')
+        self._update_qos(volume, policies)
+
+    # =================
+
+    # =================
+    # = Extend Volume =
+    # =================
+
+    @_api_lookup
     def extend_volume(self, volume, new_size):
+        pass
+
+    def _extend_volume_2(self, volume, new_size):
         # Current product limitation:
         # If app_instance is bound to template resizing is not possible
         # Once policies are implemented in the product this can go away
@@ -268,27 +380,38 @@ class DateraDriver(san.SanISCSIDriver):
         # Offline App Instance, if necessary
         reonline = False
         app_inst = self._issue_api_request(
-            URL_TEMPLATES['ai_inst']().format(_get_name(volume['id'])))
+            URL_TEMPLATES['ai_inst']().format(_get_name(volume['id'])),
+            api_version='2')
         if app_inst['admin_state'] == 'online':
             reonline = True
-            self.detach_volume(None, volume, delete_initiator=False)
+            self._detach_volume_2(None, volume, delete_initiator=False)
         # Change Volume Size
         app_inst = _get_name(volume['id'])
         data = {
             'size': new_size
         }
-        policies = self._get_policies_for_resource(volume)
+        store_name, vol_name = self._scrape_template(policies)
         self._issue_api_request(
             URL_TEMPLATES['vol_inst'](
-                policies['default_storage_name'],
-                policies['default_volume_name']).format(app_inst),
+                store_name, vol_name).format(app_inst),
             method='put',
-            body=data)
+            body=data,
+            api_version='2')
         # Online Volume, if it was online before
         if reonline:
-            self.create_export(None, volume, None)
+            self._create_export_2(None, volume, None)
 
+    # =================
+
+    # =================
+    # = Cloned Volume =
+    # =================
+
+    @_api_lookup
     def create_cloned_volume(self, volume, src_vref):
+        pass
+
+    def _create_cloned_volume_2(self, volume, src_vref):
         policies = self._get_policies_for_resource(volume)
 
         store_name, vol_name = self._scrape_template(policies)
@@ -301,35 +424,67 @@ class DateraDriver(san.SanISCSIDriver):
             'uuid': str(volume['id']),
             'clone_src': src,
         }
-        self._issue_api_request(URL_TEMPLATES['ai'](), 'post', body=data)
+        self._issue_api_request(
+            URL_TEMPLATES['ai'](), 'post', body=data, api_version='2')
 
         if volume['size'] > src_vref['size']:
             self.extend_volume(volume, volume['size'])
 
+    # =================
+
+    # =================
+    # = Delete Volume =
+    # =================
+
+    @_api_lookup
     def delete_volume(self, volume):
+        pass
+
+    def _delete_volume_2(self, volume):
         self.detach_volume(None, volume)
         app_inst = _get_name(volume['id'])
         try:
             self._issue_api_request(URL_TEMPLATES['ai_inst']().format(
                 app_inst),
-                method='delete')
+                method='delete',
+                api_version='2')
         except exception.NotFound:
             msg = _LI("Tried to delete volume %s, but it was not found in the "
                       "Datera cluster. Continuing with delete.")
             LOG.info(msg, _get_name(volume['id']))
 
+    # =================
+
+    # =================
+    # = Ensure Export =
+    # =================
+
+    @_api_lookup
     def ensure_export(self, context, volume, connector):
         """Gets the associated account, retrieves CHAP info and updates."""
-        return self.create_export(context, volume, connector)
 
+    def _ensure_export_2(self, context, volume, connector):
+        return self._create_export_2(context, volume, connector)
+
+    # =================
+
+    # =========================
+    # = Initialize Connection =
+    # =========================
+
+    @_api_lookup
     def initialize_connection(self, volume, connector):
+        pass
+
+    def _initialize_connection_2(self, volume, connector):
         # Now online the app_instance (which will online all storage_instances)
         multipath = connector.get('multipath', False)
         url = URL_TEMPLATES['ai_inst']().format(_get_name(volume['id']))
         data = {
             'admin_state': 'online'
         }
-        app_inst = self._issue_api_request(url, method='put', body=data)
+        app_inst = self._issue_api_request(
+            url, method='put', body=data, api_version='2')
         storage_instances = app_inst["storage_instances"]
         si_names = list(storage_instances.keys())
 
@@ -366,16 +521,26 @@ class DateraDriver(san.SanISCSIDriver):
                     'volume_id': volume['id'],
                     'discard': False}}
 
+    # =========================
+
+    # =================
+    # = Create Export =
+    # =================
+
+    @_api_lookup
     def create_export(self, context, volume, connector):
+        pass
+
+    def _create_export_2(self, context, volume, connector):
         # Online volume in case it hasn't been already
         url = URL_TEMPLATES['ai_inst']().format(_get_name(volume['id']))
         data = {
             'admin_state': 'online'
         }
-        self._issue_api_request(url, method='put', body=data)
+        self._issue_api_request(url, method='put', body=data, api_version='2')
         # Check if we've already setup everything for this volume
         url = (URL_TEMPLATES['si']().format(_get_name(volume['id'])))
-        storage_instances = self._issue_api_request(url)
+        storage_instances = self._issue_api_request(url, api_version='2')
         # Handle adding initiator to product if necessary
         # Then add initiator to ACL
         policies = self._get_policies_for_resource(volume)
@@ -390,7 +555,8 @@ class DateraDriver(san.SanISCSIDriver):
             initiator_group = INITIATOR_GROUP_PREFIX + volume['id']
             found = False
             initiator = connector['initiator']
-            current_initiators = self._issue_api_request('initiators')
+            current_initiators = self._issue_api_request(
+                'initiators', api_version='2')
             for iqn, values in current_initiators.items():
                 if initiator == iqn:
                     found = True
@@ -403,7 +569,8 @@ class DateraDriver(san.SanISCSIDriver):
                 self._issue_api_request("initiators",
                                         method="post",
                                         body=data,
-                                        conflict_ok=True)
+                                        conflict_ok=True,
+                                        api_version='2')
             # Create initiator group with initiator in it
             initiator_path = "/initiators/{}".format(initiator)
             initiator_group_path = "/initiator_groups/{}".format(
@@ -412,7 +579,8 @@ class DateraDriver(san.SanISCSIDriver):
             self._issue_api_request("initiator_groups",
                                     method="post",
                                     body=ig_data,
-                                    conflict_ok=True)
+                                    conflict_ok=True,
+                                    api_version='2')
             # Create ACL with initiator group as reference for each
             # storage_instance in app_instance
             # TODO(_alastor_): We need to avoid changing the ACLs if the
@@ -423,7 +591,8 @@ class DateraDriver(san.SanISCSIDriver):
                 data = {'initiator_groups': [initiator_group_path]}
                 self._issue_api_request(acl_url,
                                         method="put",
-                                        body=data)
+                                        body=data,
+                                        api_version='2')
 
         if connector and connector.get('ip'):
             try:
@@ -431,7 +600,7 @@ class DateraDriver(san.SanISCSIDriver):
                 if policies['ip_pool'] != 'default':
                     initiator_ip_pool_path = self._issue_api_request(
                         "access_network_ip_pools/{}".format(
-                            policies['ip_pool']))['path']
+                            policies['ip_pool']), api_version='2')['path']
                 # Fallback to trying reasonable IP based guess
                 else:
                     initiator_ip_pool_path = self._get_ip_pool_for_string_ip(
@@ -442,7 +611,8 @@ class DateraDriver(san.SanISCSIDriver):
                 ip_pool_data = {'ip_pool': initiator_ip_pool_path}
                 self._issue_api_request(ip_pool_url,
                                         method="put",
-                                        body=ip_pool_data)
+                                        body=ip_pool_data,
+                                        api_version='2')
             except exception.DateraAPIException:
                 # Datera product 1.0 support
                 pass
@@ -450,14 +620,25 @@ class DateraDriver(san.SanISCSIDriver):
         # Check to ensure we're ready for go-time
         self._si_poll(volume, policies)
 
+    # =================
+
+    # =================
+    # = Detach Volume =
+    # =================
+
+    @_api_lookup
     def detach_volume(self, context, volume, attachment=None):
+        pass
+
+    def _detach_volume_2(self, context, volume, attachment=None):
         url = URL_TEMPLATES['ai_inst']().format(_get_name(volume['id']))
         data = {
             'admin_state': 'offline',
             'force': True
         }
         try:
-            self._issue_api_request(url, method='put', body=data)
+            self._issue_api_request(url, method='put', body=data,
+                                    api_version='2')
         except exception.NotFound:
             msg = _LI("Tried to detach volume %s, but it was not found in the "
                       "Datera cluster. Continuing with detach.")
@@ -469,7 +650,8 @@ class DateraDriver(san.SanISCSIDriver):
         """Returns True if an acl is found for initiator_path """
         # TODO(_alastor_) when we get a /initiators/:initiator/acl_policies
         # endpoint use that instead of this monstrosity
-        initiator_groups = self._issue_api_request("initiator_groups")
+        initiator_groups = self._issue_api_request("initiator_groups",
+                                                   api_version='2')
         for ig, igdata in initiator_groups.items():
             if initiator_path in igdata['members']:
                 LOG.debug("Found initiator_group: %s for initiator: %s",
@@ -486,24 +668,37 @@ class DateraDriver(san.SanISCSIDriver):
         acl_url = (URL_TEMPLATES["si_inst"](
             store_name) + "/acl_policy").format(_get_name(volume['id']))
         try:
-            initiator_group = self._issue_api_request(acl_url)[
-                'initiator_groups'][0]
+            initiator_group = self._issue_api_request(
+                acl_url, api_version='2')['initiator_groups'][0]
             initiator_iqn_path = self._issue_api_request(
                 initiator_group.lstrip("/"))["members"][0]
             # Clear out ACL and delete initiator group
             self._issue_api_request(acl_url,
                                     method="put",
-                                    body={'initiator_groups': []})
+                                    body={'initiator_groups': []},
+                                    api_version='2')
             self._issue_api_request(initiator_group.lstrip("/"),
-                                    method="delete")
+                                    method="delete",
+                                    api_version='2')
             if not self._check_for_acl(initiator_iqn_path):
                 self._issue_api_request(initiator_iqn_path.lstrip("/"),
-                                        method="delete")
+                                        method="delete",
+                                        api_version='2')
         except (IndexError, exception.NotFound):
             LOG.debug("Did not find any initiator groups for volume: %s",
                       volume)
 
+    # =================
+
+    # ===================
+    # = Create Snapshot =
+    # ===================
+
+    @_api_lookup
     def create_snapshot(self, snapshot):
+        pass
+
+    def _create_snapshot_2(self, snapshot):
         policies = self._get_policies_for_resource(snapshot)
 
         store_name, vol_name = self._scrape_template(policies)
@@ -515,11 +710,22 @@ class DateraDriver(san.SanISCSIDriver):
         snap_params = {
             'uuid': snapshot['id'],
         }
-        snap = self._issue_api_request(url, method='post', body=snap_params)
-        snapu = "/".join(url, snap['timestamp'])
+        snap = self._issue_api_request(url, method='post', body=snap_params,
+                                       api_version='2')
+        snapu = "/".join((url, snap['timestamp']))
         self._snap_poll(snapu)
 
+    # ===================
+
+    # ===================
+    # = Delete Snapshot =
+    # ===================
+
+    @_api_lookup
     def delete_snapshot(self, snapshot):
+        pass
+
+    def _delete_snapshot_2(self, snapshot):
         policies = self._get_policies_for_resource(snapshot)
 
         store_name, vol_name = self._scrape_template(policies)
@@ -527,14 +733,16 @@ class DateraDriver(san.SanISCSIDriver):
         snap_temp = URL_TEMPLATES['vol_inst'](
             store_name, vol_name) + '/snapshots'
         snapu = snap_temp.format(_get_name(snapshot['volume_id']))
-        snapshots = self._issue_api_request(snapu, method='get')
+        snapshots = self._issue_api_request(snapu, method='get',
+                                            api_version='2')
 
         try:
             for ts, snap in snapshots.items():
                 if snap['uuid'] == snapshot['id']:
                     url_template = snapu + '/{}'
                     url = url_template.format(ts)
-                    self._issue_api_request(url, method='delete')
+                    self._issue_api_request(url, method='delete',
+                                            api_version='2')
                     break
             else:
                 raise exception.NotFound
@@ -543,7 +751,17 @@ class DateraDriver(san.SanISCSIDriver):
                       "Datera cluster. Continuing with delete.")
             LOG.info(msg, _get_name(snapshot['id']))
 
+    # ===================
+
+    # ========================
+    # = Volume From Snapshot =
+    # ========================
+
+    @_api_lookup
     def create_volume_from_snapshot(self, volume, snapshot):
+        pass
+
+    def _create_volume_from_snapshot_2(self, volume, snapshot):
         policies = self._get_policies_for_resource(snapshot)
 
         store_name, vol_name = self._scrape_template(policies)
@@ -551,7 +769,8 @@ class DateraDriver(san.SanISCSIDriver):
         snap_temp = URL_TEMPLATES['vol_inst'](
             store_name, vol_name) + '/snapshots'
         snapu = snap_temp.format(_get_name(snapshot['volume_id']))
-        snapshots = self._issue_api_request(snapu, method='get')
+        snapshots = self._issue_api_request(snapu, method='get',
+                                            api_version='2')
         for ts, snap in snapshots.items():
             if snap['uuid'] == snapshot['id']:
                 found_ts = ts
@@ -575,8 +794,16 @@ class DateraDriver(san.SanISCSIDriver):
         self._issue_api_request(
             URL_TEMPLATES['ai'](),
             method='post',
-            body=app_params)
+            body=app_params,
+            api_version='2')
 
+    # ========================
+
+    # ==========
+    # = Manage =
+    # ==========
+
+    @_api_lookup
     def manage_existing(self, volume, existing_ref):
         """Manage an existing volume on the Datera backend
 
@@ -594,6 +821,9 @@ class DateraDriver(san.SanISCSIDriver):
         :param existing_ref: Driver-specific information used to identify a
                              volume
         """
+        pass
+
+    def _manage_existing_2(self, volume, existing_ref):
         existing_ref = existing_ref['source-name']
         if existing_ref.count(":") != 2:
             raise exception.ManageExistingInvalidReference(
@@ -605,8 +835,15 @@ class DateraDriver(san.SanISCSIDriver):
                   existing=existing_ref, volume=_get_name(volume['id']))
         data = {'name': _get_name(volume['id'])}
         self._issue_api_request(URL_TEMPLATES['ai_inst']().format(
-            app_inst_name), method='put', body=data)
+            app_inst_name), method='put', body=data, api_version='2')
 
+    # ==========
+
+    # ===================
+    # = Manage Get Size =
+    # ===================
+
+    @_api_lookup
     def manage_existing_get_size(self, volume, existing_ref):
         """Get the size of an unmanaged volume on the Datera backend
 
@@ -624,6 +861,9 @@ class DateraDriver(san.SanISCSIDriver):
         :param existing_ref: Driver-specific information used to identify a
                              volume on the Datera backend
         """
+        pass
+
+    def _manage_existing_get_size_2(self, volume, existing_ref):
         existing_ref = existing_ref['source-name']
         if existing_ref.count(":") != 2:
             raise exception.ManageExistingInvalidReference(
@@ -631,7 +871,8 @@ class DateraDriver(san.SanISCSIDriver):
                   "app_inst_name:storage_inst_name:vol_name"))
         app_inst_name, si_name, vol_name = existing_ref.split(":")
         app_inst = self._issue_api_request(
-            URL_TEMPLATES['ai_inst']().format(app_inst_name))
+            URL_TEMPLATES['ai_inst']().format(app_inst_name),
+            api_version='2')
         return self._get_size(volume, app_inst, si_name, vol_name)
 
     def _get_size(self, volume, app_inst=None, si_name=None, vol_name=None):
@@ -651,6 +892,13 @@ class DateraDriver(san.SanISCSIDriver):
             'storage_instances'][si_name]['volumes'][vol_name]['size']
         return size
 
+    # ===================
+
+    # =========================
+    # = Get Manageable Volume =
+    # =========================
+
+    @_api_lookup
     def get_manageable_volumes(self, cinder_volumes, marker, limit, offset,
                                sort_keys, sort_dirs):
         """List volumes on the backend available for management by Cinder.
@@ -680,8 +928,13 @@ class DateraDriver(san.SanISCSIDriver):
         :param sort_dirs: List of directions to sort by, corresponding to
                           sort_keys (valid directions are 'asc' and 'desc')
         """
+        pass
+
+    def _get_manageable_volumes_2(self, cinder_volumes, marker, limit, offset,
+                                  sort_keys, sort_dirs):
         LOG.debug("Listing manageable Datera volumes")
-        app_instances = self._issue_api_request(URL_TEMPLATES['ai']()).values()
+        app_instances = self._issue_api_request(
+            URL_TEMPLATES['ai'](), api_version='2').values()
 
         results = []
 
@@ -722,17 +975,34 @@ class DateraDriver(san.SanISCSIDriver):
 
         return page_results
 
+    # ========================
+
+    # ============
+    # = Unmanage =
+    # ============
+
+    @_api_lookup
     def unmanage(self, volume):
         """Unmanage a currently managed volume in Cinder
 
         :param volume:       Cinder volume to unmanage
         """
+        pass
+
+    def _unmanage_2(self, volume):
         LOG.debug("Unmanaging Cinder volume %s.  Changing name to %s",
                   volume['id'], _get_unmanaged(volume['id']))
         data = {'name': _get_unmanaged(volume['id'])}
         self._issue_api_request(URL_TEMPLATES['ai_inst']().format(
-            _get_name(volume['id'])), method='put', body=data)
+            _get_name(volume['id'])), method='put', body=data, api_version='2')
 
+    # ============
+
+    # ================
+    # = Volume Stats =
+    # ================
+
+    @_api_lookup
     def get_volume_stats(self, refresh=False):
         """Get volume stats.
 
@@ -741,13 +1011,40 @@ class DateraDriver(san.SanISCSIDriver):
         the majority of the data here is cluster
         data.
         """
+        pass
+
+    def _get_volume_stats_2(self, refresh=False):
         if refresh or not self.cluster_stats:
             try:
-                self._update_cluster_stats()
+                LOG.debug("Updating cluster stats info.")
+
+                results = self._issue_api_request('system', api_version='2')
+
+                if 'uuid' not in results:
+                    LOG.error(_LE(
+                        'Failed to get updated stats from Datera Cluster.'))
+
+                backend_name = self.configuration.safe_get(
+                    'volume_backend_name')
+                stats = {
+                    'volume_backend_name': backend_name or 'Datera',
+                    'vendor_name': 'Datera',
+                    'driver_version': self.VERSION,
+                    'storage_protocol': 'iSCSI',
+                    'total_capacity_gb': (
+                        int(results['total_capacity']) / units.Gi),
+                    'free_capacity_gb': (
+                        int(results['available_capacity']) / units.Gi),
+                    'reserved_percentage': 0,
+                }
+
+                self.cluster_stats = stats
             except exception.DateraAPIException:
                 LOG.error(_LE('Failed to get updated stats from Datera '
                               'cluster.'))
         return self.cluster_stats
+
+    # =================
 
     def _is_manageable(self, app_inst):
         if len(app_inst['storage_instances']) == 1:
@@ -768,28 +1065,15 @@ class DateraDriver(san.SanISCSIDriver):
             vname = list(st['volume_templates'].keys())[0]
         return sname, vname
 
-    def _update_cluster_stats(self):
-        LOG.debug("Updating cluster stats info.")
+    # =========
+    # = Login =
+    # =========
 
-        results = self._issue_api_request('system')
+    @_api_lookup
+    def login(self):
+        pass
 
-        if 'uuid' not in results:
-            LOG.error(_LE('Failed to get updated stats from Datera Cluster.'))
-
-        backend_name = self.configuration.safe_get('volume_backend_name')
-        stats = {
-            'volume_backend_name': backend_name or 'Datera',
-            'vendor_name': 'Datera',
-            'driver_version': self.VERSION,
-            'storage_protocol': 'iSCSI',
-            'total_capacity_gb': int(results['total_capacity']) / units.Gi,
-            'free_capacity_gb': int(results['available_capacity']) / units.Gi,
-            'reserved_percentage': 0,
-        }
-
-        self.cluster_stats = stats
-
-    def _login(self):
+    def _login_2(self):
         """Use the san_login and san_password to set token."""
         body = {
             'name': self.username,
@@ -802,7 +1086,7 @@ class DateraDriver(san.SanISCSIDriver):
         try:
             LOG.debug('Getting Datera auth token.')
             results = self._issue_api_request('login', 'put', body=body,
-                                              sensitive=True)
+                                              sensitive=True, api_version='2')
             self.datera_api_token = results['key']
         except exception.NotAuthorized:
             with excutils.save_and_reraise_exception():
@@ -810,6 +1094,7 @@ class DateraDriver(san.SanISCSIDriver):
                               'check your username and password set in the '
                               'cinder.conf and start the cinder-volume '
                               'service again.'))
+    # ==========
 
     def _get_lunid(self):
         return 0
@@ -1021,7 +1306,7 @@ class DateraDriver(san.SanISCSIDriver):
         poll = True
         while poll and not retry >= TIMEOUT:
             retry += 1
-            snap = self._issue_api_request(url)
+            snap = self._issue_api_request(url, api_version='2')
             if snap['op_state'] == 'available':
                 poll = False
             else:
@@ -1040,7 +1325,7 @@ class DateraDriver(san.SanISCSIDriver):
         poll = True
         while poll and not retry >= TIMEOUT:
             retry += 1
-            si = self._issue_api_request(check_url)
+            si = self._issue_api_request(check_url, api_version='2')
             if si['op_state'] == 'available':
                 poll = False
             else:
@@ -1063,13 +1348,15 @@ class DateraDriver(san.SanISCSIDriver):
             # Filter all 0 values from being passed
             fpolicies = dict(filter(lambda _v: _v[1] > 0, fpolicies.items()))
             if fpolicies:
-                self._issue_api_request(url, 'post', body=fpolicies)
+                self._issue_api_request(url, 'post', body=fpolicies,
+                                        api_version='2')
 
     def _get_ip_pool_for_string_ip(self, ip):
         """Takes a string ipaddress and return the ip_pool API object dict """
         pool = 'default'
         ip_obj = ipaddress.ip_address(six.text_type(ip))
-        ip_pools = self._issue_api_request("access_network_ip_pools")
+        ip_pools = self._issue_api_request('access_network_ip_pools',
+                                           api_version='2')
         for ip_pool, ipdata in ip_pools.items():
             for access, adata in ipdata['network_paths'].items():
                 if not adata.get('start_ip'):
@@ -1079,7 +1366,13 @@ class DateraDriver(san.SanISCSIDriver):
                 if ip_obj in pool_if.network:
                     pool = ip_pool
         return self._issue_api_request(
-            "access_network_ip_pools/{}".format(pool))['path']
+            "access_network_ip_pools/{}".format(pool), api_version='2')['path']
+
+    def _create_tenant(self, tenant):
+        params = {'name': tenant}
+        self._issue_api_request(
+            'tenants', method='post', body=params, conflict_ok=True,
+            api_version='2.1')
 
     def _request(self, connection_string, method, payload, header, cert_data):
         LOG.debug("Endpoint for Datera API call: %s", connection_string)
@@ -1095,6 +1388,37 @@ class DateraDriver(san.SanISCSIDriver):
                 ex.message)
             LOG.error(msg)
             raise exception.DateraAPIException(msg)
+
+    def _get_supported_api_versions(self):
+        t = time.time()
+        if self.api_cache and self.api_timeout - t < API_TIMEOUT:
+            return self.api_cache
+        results = []
+        host = self.configuration.san_ip
+        port = self.configuration.datera_api_port
+        client_cert = self.configuration.driver_client_cert
+        client_cert_key = self.configuration.driver_client_cert_key
+        cert_data = None
+        header = {'Content-Type': 'application/json; charset=utf-8',
+                  'Datera-Driver': 'OpenStack-Cinder-{}'.format(self.VERSION)}
+        protocol = 'http'
+        if client_cert:
+            protocol = 'https'
+            cert_data = (client_cert, client_cert_key)
+        try:
+            url = '%s://%s:%s/api_versions' % (protocol, host, port)
+            resp = self._request(url, "get", None, header, cert_data)
+            return self._handle_bad_status(resp, url, "get", None, header,
+                                           cert_data)
+        except exception.DateraAPIException:
+            # Fallback to pre-endpoint logic
+            for version in API_VERSIONS:
+                url = '%s://%s:%s/v%s' % (protocol, host, port, version)
+                resp = self._request(url, "get", None, header, cert_data)
+                if ("api_req" in resp.json() or
+                        str(resp.json().get("code")) == "99"):
+                    results.append(version)
+        return results
 
     def _raise_response(self, response):
         msg = _('Request to Datera cluster returned bad status:'
@@ -1113,6 +1437,12 @@ class DateraDriver(san.SanISCSIDriver):
                            cert_data,
                            sensitive=False,
                            conflict_ok=False):
+        if (response.status_code == 400 and
+                connection_string.endswith("api_versions")):
+            # Raise the exception, but don't log any error.  We'll just fall
+            # back to the old style of determining API version.  We make this
+            # request a lot, so logging it is just noise
+            raise exception.DateraAPIException
         if not sensitive:
             LOG.debug(("Datera Response URL: %s\n"
                        "Datera Response Payload: %s\n"
@@ -1146,7 +1476,8 @@ class DateraDriver(san.SanISCSIDriver):
 
     @_authenticated
     def _issue_api_request(self, resource_url, method='get', body=None,
-                           sensitive=False, conflict_ok=False):
+                           sensitive=False, conflict_ok=False,
+                           api_version='2', tenant=None):
         """All API requests to Datera cluster go through this method.
 
         :param resource_url: the url of the resource
@@ -1157,7 +1488,6 @@ class DateraDriver(san.SanISCSIDriver):
         host = self.configuration.san_ip
         port = self.configuration.datera_api_port
         api_token = self.datera_api_token
-        api_version = self.configuration.datera_api_version
 
         payload = json.dumps(body, ensure_ascii=False)
         payload.encode('utf-8')
@@ -1171,6 +1501,9 @@ class DateraDriver(san.SanISCSIDriver):
 
         if api_token:
             header['Auth-Token'] = api_token
+
+        if tenant:
+            header['tenant'] = tenant
 
         client_cert = self.configuration.driver_client_cert
         client_cert_key = self.configuration.driver_client_cert_key
