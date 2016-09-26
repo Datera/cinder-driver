@@ -26,6 +26,7 @@ from oslo_utils import units
 import requests
 import six
 import ipaddress
+import eventlet
 
 from cinder import context
 from cinder import exception
@@ -35,6 +36,7 @@ from cinder.volume.drivers.san import san
 from cinder.volume import qos_specs
 from cinder.volume import volume_types
 
+DEFAULT_SI_SLEEP = 10
 # import sys
 # import logging
 # logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
@@ -125,8 +127,9 @@ class DateraDriver(san.SanISCSIDriver):
         1.1 - Look for lun-0 instead of lun-1.
         2.0 - Update For Datera API v2
         2.1 - Multipath, ACL and reorg
+        2.1.1 - Backported SI polling and policies
     """
-    VERSION = '2.1'
+    VERSION = '2.1.1'
 
     def __init__(self, *args, **kwargs):
         super(DateraDriver, self).__init__(*args, **kwargs)
@@ -412,6 +415,9 @@ class DateraDriver(san.SanISCSIDriver):
             except exception.DateraAPIException:
                 # Datera product 1.0 support
                 pass
+        # Check to ensure we're ready for go-time
+        policies = self._get_policies_for_resource(volume)
+        self._si_poll(volume, policies)
 
     def detach_volume(self, context, volume, attachment=None):
         url = URL_TEMPLATES['ai_inst'].format(volume['id'])
@@ -552,6 +558,53 @@ class DateraDriver(san.SanISCSIDriver):
 
         self.cluster_stats = stats
 
+    def _get_policies_for_resource(self, resource):
+        """Get extra_specs and qos_specs of a volume_type.
+
+        This fetches the scoped keys from the volume type. Anything set from
+         qos_specs will override key/values set from extra_specs.
+        """
+        type_id = resource.get('volume_type_id', None)
+        # Handle case of volume with no type.  We still want the
+        # specified defaults from above
+        if type_id:
+            ctxt = context.get_admin_context()
+            volume_type = volume_types.get_volume_type(ctxt, type_id)
+            specs = volume_type.get('extra_specs')
+        else:
+            volume_type = None
+            specs = {}
+
+        # Set defaults:
+        policies = {k.lstrip('DF:'): str(v['default']) for (k, v)
+                    in self._init_vendor_properties()[0].items()}
+
+        if volume_type:
+            # Populate updated value
+            for key, value in specs.items():
+                if ':' in key:
+                    fields = key.split(':')
+                    key = fields[1]
+                    policies[key] = value
+
+            qos_specs_id = volume_type.get('qos_specs_id')
+            if qos_specs_id is not None:
+                qos_kvs = qos_specs.get_qos_specs(ctxt, qos_specs_id)['specs']
+                if qos_kvs:
+                    policies.update(qos_kvs)
+        # Cast everything except booleans int that can be cast
+        for k, v in policies.items():
+            # Handle String Boolean case
+            if v == 'True' or v == 'False':
+                policies[k] = policies[k] == 'True'
+                continue
+            # Int cast
+            try:
+                policies[k] = int(v)
+            except ValueError:
+                pass
+        return policies
+
     def _get_policies_by_volume_type(self, type_id):
         """Get extra_specs and qos_specs of a volume_type.
 
@@ -575,6 +628,24 @@ class DateraDriver(san.SanISCSIDriver):
             if qos_kvs:
                 policies.update(qos_kvs)
         return policies
+
+    def _si_poll(self, volume, policies):
+        # Initial 4 second sleep required for some Datera versions
+        eventlet.sleep(DEFAULT_SI_SLEEP)
+        TIMEOUT = 10
+        retry = 0
+        check_url = URL_TEMPLATES['si_inst'].format(volume['id'])
+        poll = True
+        while poll and not retry >= TIMEOUT:
+            retry += 1
+            si = self._issue_api_request(check_url)
+            if si['op_state'] == 'available':
+                poll = False
+            else:
+                eventlet.sleep(1)
+        if retry >= TIMEOUT:
+            raise exception.VolumeDriverException(
+                message=_('Resource not ready.'))
 
     def _get_ip_pool_for_string_ip(self, ip):
         """ Takes a string ipaddress and return the ip_pool API object dict """
