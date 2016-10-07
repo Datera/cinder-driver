@@ -31,6 +31,12 @@ Datera Cinder Repository
      - 1.0, 1.1, 1.1.6
      - https://raw.githubusercontent.com/Datera/cinder-driver/mitaka-v2.1.1/src/datera.py
    * - Mitaka
+     - mitaka-v2.1.2
+     - 2.1.2
+     - Multipathing, ACL, Storage Instance Polling, Snapshot Polling
+     - 1.1, 1.1.6, 1.1.7, 2.0
+     - https://raw.githubusercontent.com/Datera/cinder-driver/mitaka-v2.1.2/src/datera.py
+   * - Mitaka
      - mitaka-v2
      - 2.0
      - Baseline Driver
