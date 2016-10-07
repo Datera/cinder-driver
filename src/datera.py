@@ -1374,6 +1374,15 @@ class DateraDriver(san.SanISCSIDriver):
             'tenants', method='post', body=params, conflict_ok=True,
             api_version='2.1')
 
+    def _get_metadata(self, obj_url):
+        url = "/".join((obj_url.rstrip("/"), "metadata"))
+        return self._issue_api_request(url, api_version="2.1").get("data")
+
+    def _store_metadata(self, obj_url, data):
+        url = "/".join((obj_url.rstrip("/"), "metadata"))
+        return self._issue_api_request(url, method="put", api_version="2.1",
+                                       body=data)
+
     def _request(self, connection_string, method, payload, header, cert_data):
         LOG.debug("Endpoint for Datera API call: %s", connection_string)
         try:
@@ -1483,6 +1492,12 @@ class DateraDriver(san.SanISCSIDriver):
         :param resource_url: the url of the resource
         :param method: the request verb
         :param body: a dict with options for the action_type
+        :param sensitive: Bool, whether request should be obscured from logs
+        :param conflict_ok: Bool, True to suppress ConflictError exceptions
+        during this request
+        :param api_version: The Datera api version for the request
+        :param tenant: The tenant header value for the request (only applicable
+        to 2.1 product versions and later)
         :returns: a dict of the response from the Datera cluster
         """
         host = self.configuration.san_ip
