@@ -37,6 +37,7 @@ from cinder.volume import qos_specs
 from cinder.volume import volume_types
 
 DEFAULT_SI_SLEEP = 10
+DEFAULT_SNAP_SLEEP = 10
 # import sys
 # import logging
 # logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
@@ -128,8 +129,9 @@ class DateraDriver(san.SanISCSIDriver):
         2.0 - Update For Datera API v2
         2.1 - Multipath, ACL and reorg
         2.1.1 - Backported SI polling and policies
+        2.1.2 - Backported Snapshot polling
     """
-    VERSION = '2.1.1'
+    VERSION = '2.1.2'
 
     def __init__(self, *args, **kwargs):
         super(DateraDriver, self).__init__(*args, **kwargs)
@@ -402,19 +404,19 @@ class DateraDriver(san.SanISCSIDriver):
 
         if connector and connector.get('ip'):
             # Determine IP Pool from IP and update storage_instance
-            try:
-                initiator_ip_pool_path = self._get_ip_pool_for_string_ip(
-                    connector['ip'])
+            # try:
+            initiator_ip_pool_path = self._get_ip_pool_for_string_ip(
+                connector['ip'])
 
-                ip_pool_url = URL_TEMPLATES['si_inst'].format(
-                    volume['id'])
-                ip_pool_data = {'ip_pool': initiator_ip_pool_path}
-                self._issue_api_request(ip_pool_url,
-                                        method="put",
-                                        body=ip_pool_data)
-            except exception.DateraAPIException:
-                # Datera product 1.0 support
-                pass
+            ip_pool_url = URL_TEMPLATES['si_inst'].format(
+                volume['id'])
+            ip_pool_data = {'ip_pool': initiator_ip_pool_path}
+            self._issue_api_request(ip_pool_url,
+                                    method="put",
+                                    body=ip_pool_data)
+            # except exception.DateraAPIException:
+            #     # Datera product 1.0 support
+            #     pass
         # Check to ensure we're ready for go-time
         policies = self._get_policies_for_resource(volume)
         self._si_poll(volume, policies)
@@ -475,7 +477,9 @@ class DateraDriver(san.SanISCSIDriver):
         snap_params = {
             'uuid': snapshot['id'],
         }
-        self._issue_api_request(url, method='post', body=snap_params)
+        snap = self._issue_api_request(url, method='post', body=snap_params)
+        snapu = "/".join((url, snap['timestamp']))
+        self._snap_poll(snapu)
 
     def delete_snapshot(self, snapshot):
         snap_temp = URL_TEMPLATES['vol_inst'] + '/snapshots'
@@ -629,6 +633,22 @@ class DateraDriver(san.SanISCSIDriver):
                 policies.update(qos_kvs)
         return policies
 
+    def _snap_poll(self, url):
+        eventlet.sleep(DEFAULT_SNAP_SLEEP)
+        TIMEOUT = 10
+        retry = 0
+        poll = True
+        while poll and not retry >= TIMEOUT:
+            retry += 1
+            snap = self._issue_api_request(url)
+            if snap['op_state'] == 'available':
+                poll = False
+            else:
+                eventlet.sleep(1)
+        if retry >= TIMEOUT:
+            raise exception.VolumeDriverException(
+                message=_('Snapshot not ready.'))
+
     def _si_poll(self, volume, policies):
         # Initial 4 second sleep required for some Datera versions
         eventlet.sleep(DEFAULT_SI_SLEEP)
@@ -748,7 +768,8 @@ class DateraDriver(san.SanISCSIDriver):
         payload = json.dumps(body, ensure_ascii=False)
         payload.encode('utf-8')
 
-        header = {'Content-Type': 'application/json; charset=utf-8'}
+        header = {'Content-Type': 'application/json; charset=utf-8',
+                  'Datera-Driver': 'OpenStack-Cinder-{}'.format(self.VERSION)}
 
         protocol = 'http'
         if self.configuration.driver_use_ssl:
