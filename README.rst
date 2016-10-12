@@ -12,13 +12,19 @@ Datera Cinder Repository
      - Additional Capabilities Introduced
      - Supported Datera Product Versions
      - URL
-   * - Newton (Unreleased)
+   * - Newton
+     - newton-v2.2.1
+     - 2.2.1
+     - Capabilities List, Extended Volume-Type Support, Naming Convention Change, Manage/Unmanage Snapshot polling
+     - 1.0, 1.1
+     - https://raw.githubusercontent.com/Datera/cinder-driver/newton-v2.2.1/src/datera.py
+   * - Newton
      - newton-v2.2
      - 2.2
      - Capabilities List, Extended Volume-Type Support, Naming Convention Change, Manage/Unmanage
      - 1.0, 1.1
      - https://raw.githubusercontent.com/Datera/cinder-driver/newton-v2.2/src/datera.py
-   * - Newton (Unreleased)
+   * - Newton
      - newton-v2.1
      - 2.1
      - Multipathing, ACL
