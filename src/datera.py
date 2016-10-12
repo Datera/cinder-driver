@@ -76,6 +76,7 @@ CONF.import_opt('driver_use_ssl', 'cinder.volume.driver')
 CONF.register_opts(d_opts)
 
 DEFAULT_SI_SLEEP = 10
+DEFAULT_SNAP_SLEEP = 10
 INITIATOR_GROUP_PREFIX = "IG-"
 OS_PREFIX = "OS-"
 UNMANAGE_PREFIX = "UNMANAGED-"
@@ -149,8 +150,9 @@ class DateraDriver(san.SanISCSIDriver):
         2.2 - Capabilites List, Extended Volume-Type Support
               Naming convention change,
               Volume Manage/Unmanage support
+        2.2.1 - Snapshot Polling
     """
-    VERSION = '2.2'
+    VERSION = '2.2.1'
 
     CI_WIKI_NAME = "datera-ci"
 
@@ -494,7 +496,9 @@ class DateraDriver(san.SanISCSIDriver):
         snap_params = {
             'uuid': snapshot['id'],
         }
-        self._issue_api_request(url, method='post', body=snap_params)
+        snap = self._issue_api_request(url, method='post', body=snap_params)
+        snapu = "/".join((url, snap['timestamp']))
+        self._snap_poll(snapu)
 
     def delete_snapshot(self, snapshot):
         policies = self._get_policies_for_resource(snapshot)
@@ -962,6 +966,22 @@ class DateraDriver(san.SanISCSIDriver):
             except ValueError:
                 pass
         return policies
+
+    def _snap_poll(self, url):
+        eventlet.sleep(DEFAULT_SNAP_SLEEP)
+        TIMEOUT = 10
+        retry = 0
+        poll = True
+        while poll and not retry >= TIMEOUT:
+            retry += 1
+            snap = self._issue_api_request(url)
+            if snap['op_state'] == 'available':
+                poll = False
+            else:
+                eventlet.sleep(1)
+        if retry >= TIMEOUT:
+            raise exception.VolumeDriverException(
+                message=_('Snapshot not ready.'))
 
     def _si_poll(self, volume, policies):
         # Initial 4 second sleep required for some Datera versions
