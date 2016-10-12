@@ -84,6 +84,16 @@ UNMANAGE_PREFIX = "UNMANAGED-"
 API_VERSIONS = ["2", "2.1"]
 API_TIMEOUT = 20
 
+###############
+# METADATA KEYS
+###############
+
+M_TYPE = 'cinder_volume_type'
+M_CALL = 'cinder_calls'
+M_CLONE = 'cinder_clone_from'
+
+M_KEYS = [M_TYPE, M_CALL, M_CLONE]
+
 # Taken from this SO post :
 # http://stackoverflow.com/a/18516125
 # Using old-style string formatting because of the nature of the regex
@@ -222,6 +232,8 @@ class DateraDriver(san.SanISCSIDriver):
 
     CI_WIKI_NAME = "datera-ci"
 
+    HEADER_DATA = {'Datera-Driver': 'OpenStack-Cinder-{}'.format(VERSION)}
+
     def __init__(self, *args, **kwargs):
         super(DateraDriver, self).__init__(*args, **kwargs)
         self.configuration.append_config_values(d_opts)
@@ -356,6 +368,15 @@ class DateraDriver(san.SanISCSIDriver):
             URL_TEMPLATES['ai'](), 'post', body=app_params, api_version='2.1')
         self._update_qos(volume, policies)
 
+        metadata = {}
+        volume_type = self._get_volume_type_obj(volume)
+        if volume_type:
+            metadata.update({M_TYPE: volume_type['name'],
+                             M_CALL: ['create_volume']})
+        metadata.update(self.HEADER_DATA)
+        url = URL_TEMPLATES['ai_inst']().format(_get_name(volume['id']))
+        self._store_metadata(url, metadata)
+
     # =================
 
     # =================
@@ -429,6 +450,14 @@ class DateraDriver(san.SanISCSIDriver):
 
         if volume['size'] > src_vref['size']:
             self.extend_volume(volume, volume['size'])
+
+    def _create_cloned_volume_2_1(self, volume, src_vref):
+        self._create_cloned_volume_2(volume, src_vref)
+        url = URL_TEMPLATES['ai_inst']().format(_get_name(volume['id']))
+        volume_type = self._get_volume_type_obj(volume)
+        metadata = {M_TYPE: volume_type['name'],
+                    M_CLONE: _get_name(src_vref['id'])}
+        self._store_metadata(url, metadata, "create_cloned_volume")
 
     # =================
 
@@ -520,6 +549,13 @@ class DateraDriver(san.SanISCSIDriver):
                     'target_lun': self._get_lunid(),
                     'volume_id': volume['id'],
                     'discard': False}}
+
+    def _initialize_connection_2_1(self, volume, connector):
+        result = self._initialize_connection_2(volume, connector)
+
+        url = URL_TEMPLATES['ai_inst']().format(_get_name(volume['id']))
+        self._store_metadata(url, {}, "initialize_connection")
+        return result
 
     # =========================
 
@@ -620,6 +656,13 @@ class DateraDriver(san.SanISCSIDriver):
         # Check to ensure we're ready for go-time
         self._si_poll(volume, policies)
 
+    def _create_export_2_1(self, context, volume, connector):
+        self._create_export_2(context, volume, connector)
+        url = URL_TEMPLATES['ai_inst']().format(_get_name(volume['id']))
+        metadata = {}
+        # TODO(_alastor_): Figure out what we want to post with a create_export
+        # call
+        self._store_metadata(url, metadata, "create_export")
     # =================
 
     # =================
@@ -1082,6 +1125,7 @@ class DateraDriver(san.SanISCSIDriver):
 
         # Unset token now, otherwise potential expired token will be sent
         # along to be used for authorization when trying to login.
+        self.datera_api_token = None
 
         try:
             LOG.debug('Getting Datera auth token.')
@@ -1252,21 +1296,29 @@ class DateraDriver(san.SanISCSIDriver):
 
         return properties, 'DF'
 
-    def _get_policies_for_resource(self, resource):
-        """Get extra_specs and qos_specs of a volume_type.
-
-        This fetches the scoped keys from the volume type. Anything set from
-         qos_specs will override key/values set from extra_specs.
-        """
+    def _get_volume_type_obj(self, resource):
         type_id = resource.get('volume_type_id', None)
         # Handle case of volume with no type.  We still want the
         # specified defaults from above
         if type_id:
             ctxt = context.get_admin_context()
             volume_type = volume_types.get_volume_type(ctxt, type_id)
-            specs = volume_type.get('extra_specs')
         else:
             volume_type = None
+        return volume_type
+
+    def _get_policies_for_resource(self, resource):
+        """Get extra_specs and qos_specs of a volume_type.
+
+        This fetches the scoped keys from the volume type. Anything set from
+         qos_specs will override key/values set from extra_specs.
+        """
+        volume_type = self._get_volume_type_obj(resource)
+        # Handle case of volume with no type.  We still want the
+        # specified defaults from above
+        if volume_type:
+            specs = volume_type.get('extra_specs')
+        else:
             specs = {}
 
         # Set defaults:
@@ -1283,6 +1335,7 @@ class DateraDriver(san.SanISCSIDriver):
 
             qos_specs_id = volume_type.get('qos_specs_id')
             if qos_specs_id is not None:
+                ctxt = context.get_admin_context()
                 qos_kvs = qos_specs.get_qos_specs(ctxt, qos_specs_id)['specs']
                 if qos_kvs:
                     policies.update(qos_kvs)
@@ -1376,12 +1429,24 @@ class DateraDriver(san.SanISCSIDriver):
 
     def _get_metadata(self, obj_url):
         url = "/".join((obj_url.rstrip("/"), "metadata"))
-        return self._issue_api_request(url, api_version="2.1").get("data")
+        mdata = self._issue_api_request(url, api_version="2.1").get("data")
+        # Make sure we only grab the relevant keys
+        filter_mdata = {k: json.loads(mdata[k]) for k in mdata if k in M_KEYS}
+        # Metadata lists are strings separated by the "|" character
+        return filter_mdata
 
-    def _store_metadata(self, obj_url, data):
+    def _store_metadata(self, obj_url, data, calling_func_name):
+        mdata = self._get_metadata(obj_url)
+        if mdata.get(M_CALL):
+            mdata[M_CALL].append(calling_func_name)
+        else:
+            mdata[M_CALL] = [calling_func_name]
+        mdata.update(data)
+        mdata.update(self.HEADER_DATA)
+        data_s = {k: json.dumps(v) for k, v in data.items()}
         url = "/".join((obj_url.rstrip("/"), "metadata"))
         return self._issue_api_request(url, method="put", api_version="2.1",
-                                       body=data)
+                                       body=data_s)
 
     def _request(self, connection_string, method, payload, header, cert_data):
         LOG.debug("Endpoint for Datera API call: %s", connection_string)
@@ -1417,8 +1482,8 @@ class DateraDriver(san.SanISCSIDriver):
         try:
             url = '%s://%s:%s/api_versions' % (protocol, host, port)
             resp = self._request(url, "get", None, header, cert_data)
-            return self._handle_bad_status(resp, url, "get", None, header,
-                                           cert_data)
+            data = resp.json()
+            results = [elem.strip("v") for elem in data['api_versions']]
         except exception.DateraAPIException:
             # Fallback to pre-endpoint logic
             for version in API_VERSIONS:
@@ -1507,8 +1572,8 @@ class DateraDriver(san.SanISCSIDriver):
         payload = json.dumps(body, ensure_ascii=False)
         payload.encode('utf-8')
 
-        header = {'Content-Type': 'application/json; charset=utf-8',
-                  'Datera-Driver': 'OpenStack-Cinder-{}'.format(self.VERSION)}
+        header = {'Content-Type': 'application/json; charset=utf-8'}
+        header.update(self.HEADER_DATA)
 
         protocol = 'http'
         if self.configuration.driver_use_ssl:
