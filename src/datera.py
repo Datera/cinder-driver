@@ -351,12 +351,8 @@ class DateraDriver(san.SanISCSIDriver):
 
     def create_export(self, context, volume, connector):
         # Online volume in case it hasn't been already
-        url = URL_TEMPLATES['ai_inst'].format(volume['id'])
-        data = {
-            'admin_state': 'online'
-        }
-        self._issue_api_request(url, method='put', body=data)
         # Check if we've already setup everything for this volume
+        ai_url = URL_TEMPLATES['ai_inst'].format(volume['id'])
         url = (URL_TEMPLATES['si'].format(volume['id']))
         storage_instances = self._issue_api_request(url)
         # Handle adding initiator to product if necessary
@@ -404,7 +400,12 @@ class DateraDriver(san.SanISCSIDriver):
 
         if connector and connector.get('ip'):
             # Determine IP Pool from IP and update storage_instance
-            # try:
+            data = {
+                'admin_state': 'offline'
+            }
+            # Ensure that the storage_instance is offline before
+            # we try and update the ip pool
+            self._issue_api_request(ai_url, method='put', body=data)
             initiator_ip_pool_path = self._get_ip_pool_for_string_ip(
                 connector['ip'])
 
@@ -414,11 +415,12 @@ class DateraDriver(san.SanISCSIDriver):
             self._issue_api_request(ip_pool_url,
                                     method="put",
                                     body=ip_pool_data)
-            # except exception.DateraAPIException:
-            #     # Datera product 1.0 support
-            #     pass
         # Check to ensure we're ready for go-time
         policies = self._get_policies_for_resource(volume)
+        data = {
+            'admin_state': 'online'
+        }
+        self._issue_api_request(ai_url, method='put', body=data)
         self._si_poll(volume, policies)
 
     def detach_volume(self, context, volume, attachment=None):
