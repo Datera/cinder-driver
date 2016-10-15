@@ -130,8 +130,9 @@ class DateraDriver(san.SanISCSIDriver):
         2.1 - Multipath, ACL and reorg
         2.1.1 - Backported SI polling and policies
         2.1.2 - Backported Snapshot polling
+        2.1.3 - IP Pool bugfix
     """
-    VERSION = '2.1.2'
+    VERSION = '2.1.3'
 
     def __init__(self, *args, **kwargs):
         super(DateraDriver, self).__init__(*args, **kwargs)
