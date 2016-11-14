@@ -424,7 +424,10 @@ class DateraDriver(san.SanISCSIDriver):
 
     def _extend_volume_2_1(self, volume, new_size):
         self._extend_volume_2(volume, new_size)
-        url = URL_TEMPLATES['ai_inst']().format(_get_name(volume['id']))
+        policies = self._get_policies_for_resource(volume)
+        store_name, vol_name = self._scrape_template(policies)
+        url = URL_TEMPLATES['vol_inst'](
+                store_name, vol_name).format(_get_name(volume['id']))
         metadata = {}
         self._store_metadata(url, metadata, "extend_volume_2_1")
 
@@ -775,14 +778,14 @@ class DateraDriver(san.SanISCSIDriver):
         snapu = "/".join((url, snap['timestamp']))
         self._snap_poll(snapu)
 
-    def _create_snapshot_2_1(self, snapshot):
-        self._create_snapshot_2(snapshot)
-        policies = self._get_policies_for_resource(snapshot)
-        store_name, vol_name = self._scrape_template(policies)
-        url = URL_TEMPLATES['vol_inst'](store_name, vol_name).format(
-                _get_name(snapshot['volume_id']))
-        metadata = {}
-        self._store_metadata(url, metadata, "create_snapshot_2_1")
+    # def _create_snapshot_2_1(self, snapshot):
+    #     self._create_snapshot_2(snapshot)
+    #     policies = self._get_policies_for_resource(snapshot)
+    #     store_name, vol_name = self._scrape_template(policies)
+    #     url = URL_TEMPLATES['vol_inst'](store_name, vol_name).format(
+    #             _get_name(snapshot['volume_id']))
+    #     metadata = {}
+    #     self._store_metadata(url, metadata, "create_snapshot_2_1")
 
     # ===================
 
@@ -820,14 +823,15 @@ class DateraDriver(san.SanISCSIDriver):
                       "Datera cluster. Continuing with delete.")
             LOG.info(msg, _get_name(snapshot['id']))
 
-    def _delete_snapshot_2_1(self, snapshot):
-        self._delete_snapshot_2(snapshot)
-        policies = self._get_policies_for_resource(snapshot)
-        store_name, vol_name = self._scrape_template(policies)
-        url = URL_TEMPLATES['vol_inst'](store_name, vol_name).format(
-            _get_name(snapshot['volume_id']))
-        metadata = {}
-        self._store_metadata(url, metadata, "create_volume_from_snapshot_2_1")
+    # def _delete_snapshot_2_1(self, snapshot):
+    #     self._delete_snapshot_2(snapshot)
+    #     policies = self._get_policies_for_resource(snapshot)
+    #     store_name, vol_name = self._scrape_template(policies)
+    #     url = URL_TEMPLATES['vol_inst'](store_name, vol_name).format(
+    #         _get_name(snapshot['volume_id']))
+    #     metadata = {}
+    #     self._store_metadata(
+    #         url, metadata, "create_volume_from_snapshot_2_1")
 
     # ===================
 
@@ -875,14 +879,15 @@ class DateraDriver(san.SanISCSIDriver):
             body=app_params,
             api_version='2')
 
-    def _create_volume_from_snapshot_2_1(self, volume, snapshot):
-        self._create_volume_from_snapshot_2(volume, snapshot)
-        policies = self._get_policies_for_resource(snapshot)
-        store_name, vol_name = self._scrape_template(policies)
-        url = URL_TEMPLATES['vol_inst'](store_name, vol_name).format(
-            _get_name(snapshot['volume_id']))
-        metadata = {}
-        self._store_metadata(url, metadata, "create_volume_from_snapshot_2_1")
+    # def _create_volume_from_snapshot_2_1(self, volume, snapshot):
+    #     self._create_volume_from_snapshot_2(volume, snapshot)
+    #     policies = self._get_policies_for_resource(snapshot)
+    #     store_name, vol_name = self._scrape_template(policies)
+    #     url = URL_TEMPLATES['vol_inst'](store_name, vol_name).format(
+    #         _get_name(snapshot['volume_id']))
+    #     metadata = {}
+    #     self._store_metadata(
+    #         url, metadata, "create_volume_from_snapshot_2_1")
 
     # ========================
 
@@ -924,14 +929,14 @@ class DateraDriver(san.SanISCSIDriver):
         self._issue_api_request(URL_TEMPLATES['ai_inst']().format(
             app_inst_name), method='put', body=data, api_version='2')
 
-    def _manage_existing_2_1(self, volume, existing_ref):
-        self._manage_existing_2(volume, existing_ref)
-        app_inst_name, si_name, vol_name = existing_ref.split(":")
-        url = URL_TEMPLATES['vol_inst'](si_name, vol_name).format(
-            app_inst_name)
-        metadata = {M_MANAGED: True}
-        self._store_metadata(
-            url, metadata, "manage_existing_2_1")
+    # def _manage_existing_2_1(self, volume, existing_ref):
+    #     self._manage_existing_2(volume, existing_ref)
+    #     app_inst_name, si_name, vol_name = existing_ref.split(":")
+    #     url = URL_TEMPLATES['vol_inst'](si_name, vol_name).format(
+    #         app_inst_name)
+    #     metadata = {M_MANAGED: True}
+    #     self._store_metadata(
+    #         url, metadata, "manage_existing_2_1")
 
     # ==========
 
@@ -971,14 +976,14 @@ class DateraDriver(san.SanISCSIDriver):
             api_version='2')
         return self._get_size(volume, app_inst, si_name, vol_name)
 
-    def _manage_existing_get_size_2_1(self, volume, existing_ref):
-        result = self._manage_existing_get_size_2(self, volume, existing_ref)
-        app_inst_name, si_name, vol_name = existing_ref.split(":")
-        url = URL_TEMPLATES['vol_inst'](si_name, vol_name).format(
-            app_inst_name)
-        metadata = {}
-        self._store_metadata(url, metadata, "manage_existing_get_size_2_1")
-        return result
+    # def _manage_existing_get_size_2_1(self, volume, existing_ref):
+    #     result = self._manage_existing_get_size_2(self, volume, existing_ref)
+    #     app_inst_name, si_name, vol_name = existing_ref.split(":")
+    #     url = URL_TEMPLATES['vol_inst'](si_name, vol_name).format(
+    #         app_inst_name)
+    #     metadata = {}
+    #     self._store_metadata(url, metadata, "manage_existing_get_size_2_1")
+    #     return result
 
     def _get_size(self, volume, app_inst=None, si_name=None, vol_name=None):
         """Helper method for getting the size of a backend object
@@ -1101,14 +1106,14 @@ class DateraDriver(san.SanISCSIDriver):
         self._issue_api_request(URL_TEMPLATES['ai_inst']().format(
             _get_name(volume['id'])), method='put', body=data, api_version='2')
 
-    def _unmanage_2_1(self, volume):
-        self._unmanage_2(volume)
-        policies = self._get_policies_for_resource(volume)
-        store_name, vol_name = self._scrape_template(policies)
-        url = URL_TEMPLATES['vol_inst'](store_name, vol_name).format(
-            _get_name(volume['id']))
-        metadata = {M_MANAGED: False}
-        self._store_metadata(url, metadata, "unmanage_2_1")
+    # def _unmanage_2_1(self, volume):
+    #     self._unmanage_2(volume)
+    #     policies = self._get_policies_for_resource(volume)
+    #     store_name, vol_name = self._scrape_template(policies)
+    #     url = URL_TEMPLATES['vol_inst'](store_name, vol_name).format(
+    #         _get_name(volume['id']))
+    #     metadata = {M_MANAGED: False}
+    #     self._store_metadata(url, metadata, "unmanage_2_1")
 
     # ============
 
