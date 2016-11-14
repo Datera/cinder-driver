@@ -422,14 +422,14 @@ class DateraDriver(san.SanISCSIDriver):
         if reonline:
             self._create_export_2(None, volume, None)
 
-    def _extend_volume_2_1(self, volume, new_size):
-        self._extend_volume_2(volume, new_size)
-        policies = self._get_policies_for_resource(volume)
-        store_name, vol_name = self._scrape_template(policies)
-        url = URL_TEMPLATES['vol_inst'](
-                store_name, vol_name).format(_get_name(volume['id']))
-        metadata = {}
-        self._store_metadata(url, metadata, "extend_volume_2_1")
+    # def _extend_volume_2_1(self, volume, new_size):
+    #     self._extend_volume_2(volume, new_size)
+    #     policies = self._get_policies_for_resource(volume)
+    #     store_name, vol_name = self._scrape_template(policies)
+    #     url = URL_TEMPLATES['vol_inst'](
+    #             store_name, vol_name).format(_get_name(volume['id']))
+    #     metadata = {}
+    #     self._store_metadata(url, metadata, "extend_volume_2_1")
 
     # =================
 
