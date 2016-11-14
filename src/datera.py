@@ -91,8 +91,9 @@ API_TIMEOUT = 20
 M_TYPE = 'cinder_volume_type'
 M_CALL = 'cinder_calls'
 M_CLONE = 'cinder_clone_from'
+M_MANAGED = 'cinder_managed'
 
-M_KEYS = [M_TYPE, M_CALL, M_CLONE]
+M_KEYS = [M_TYPE, M_CALL, M_CLONE, M_MANAGED]
 
 # Taken from this SO post :
 # http://stackoverflow.com/a/18516125
@@ -371,11 +372,10 @@ class DateraDriver(san.SanISCSIDriver):
         metadata = {}
         volume_type = self._get_volume_type_obj(volume)
         if volume_type:
-            metadata.update({M_TYPE: volume_type['name'],
-                             M_CALL: ['create_volume']})
+            metadata.update({M_TYPE: volume_type['name']})
         metadata.update(self.HEADER_DATA)
         url = URL_TEMPLATES['ai_inst']().format(_get_name(volume['id']))
-        self._store_metadata(url, metadata)
+        self._store_metadata(url, metadata, "create_volume_2_1")
 
     # =================
 
@@ -422,6 +422,12 @@ class DateraDriver(san.SanISCSIDriver):
         if reonline:
             self._create_export_2(None, volume, None)
 
+    def _extend_volume_2_1(self, volume, new_size):
+        self._extend_volume_2(volume, new_size)
+        url = URL_TEMPLATES['ai_inst']().format(_get_name(volume['id']))
+        metadata = {}
+        self._store_metadata(url, metadata, "extend_volume_2_1")
+
     # =================
 
     # =================
@@ -457,7 +463,7 @@ class DateraDriver(san.SanISCSIDriver):
         volume_type = self._get_volume_type_obj(volume)
         metadata = {M_TYPE: volume_type['name'],
                     M_CLONE: _get_name(src_vref['id'])}
-        self._store_metadata(url, metadata, "create_cloned_volume")
+        self._store_metadata(url, metadata, "create_cloned_volume_2_1")
 
     # =================
 
@@ -481,6 +487,10 @@ class DateraDriver(san.SanISCSIDriver):
             msg = _LI("Tried to delete volume %s, but it was not found in the "
                       "Datera cluster. Continuing with delete.")
             LOG.info(msg, _get_name(volume['id']))
+
+    def _delete_volume_2_1(self, volume):
+        self._delete_volume_2(volume)
+        # No need for metadata update on a deleted object
 
     # =================
 
@@ -554,7 +564,7 @@ class DateraDriver(san.SanISCSIDriver):
         result = self._initialize_connection_2(volume, connector)
 
         url = URL_TEMPLATES['ai_inst']().format(_get_name(volume['id']))
-        self._store_metadata(url, {}, "initialize_connection")
+        self._store_metadata(url, {}, "initialize_connection_2_1")
         return result
 
     # =========================
@@ -662,7 +672,8 @@ class DateraDriver(san.SanISCSIDriver):
         metadata = {}
         # TODO(_alastor_): Figure out what we want to post with a create_export
         # call
-        self._store_metadata(url, metadata, "create_export")
+        self._store_metadata(url, metadata, "create_export_2_1")
+
     # =================
 
     # =================
@@ -688,6 +699,12 @@ class DateraDriver(san.SanISCSIDriver):
             LOG.info(msg, volume['id'])
         # TODO(_alastor_): Make acl cleaning multi-attach aware
         self._clean_acl(volume)
+
+    def _detach_volume_2_1(self, context, volume, attachment=None):
+        self._detach_volume_2(context, volume, attachment)
+        url = URL_TEMPLATES['ai_inst']().format(_get_name(volume['id']))
+        metadata = {}
+        self._store_metadata(url, metadata, "detach_volume_2_1")
 
     def _check_for_acl(self, initiator_path):
         """Returns True if an acl is found for initiator_path """
@@ -758,6 +775,15 @@ class DateraDriver(san.SanISCSIDriver):
         snapu = "/".join((url, snap['timestamp']))
         self._snap_poll(snapu)
 
+    def _create_snapshot_2_1(self, snapshot):
+        self._create_snapshot_2(snapshot)
+        policies = self._get_policies_for_resource(snapshot)
+        store_name, vol_name = self._scrape_template(policies)
+        url = URL_TEMPLATES['vol_inst'](store_name, vol_name).format(
+                _get_name(snapshot['volume_id']))
+        metadata = {}
+        self._store_metadata(url, metadata, "create_snapshot_2_1")
+
     # ===================
 
     # ===================
@@ -793,6 +819,15 @@ class DateraDriver(san.SanISCSIDriver):
             msg = _LI("Tried to delete snapshot %s, but was not found in "
                       "Datera cluster. Continuing with delete.")
             LOG.info(msg, _get_name(snapshot['id']))
+
+    def _delete_snapshot_2_1(self, snapshot):
+        self._delete_snapshot_2(snapshot)
+        policies = self._get_policies_for_resource(snapshot)
+        store_name, vol_name = self._scrape_template(policies)
+        url = URL_TEMPLATES['vol_inst'](store_name, vol_name).format(
+            _get_name(snapshot['volume_id']))
+        metadata = {}
+        self._store_metadata(url, metadata, "create_volume_from_snapshot_2_1")
 
     # ===================
 
@@ -840,6 +875,15 @@ class DateraDriver(san.SanISCSIDriver):
             body=app_params,
             api_version='2')
 
+    def _create_volume_from_snapshot_2_1(self, volume, snapshot):
+        self._create_volume_from_snapshot_2(volume, snapshot)
+        policies = self._get_policies_for_resource(snapshot)
+        store_name, vol_name = self._scrape_template(policies)
+        url = URL_TEMPLATES['vol_inst'](store_name, vol_name).format(
+            _get_name(snapshot['volume_id']))
+        metadata = {}
+        self._store_metadata(url, metadata, "create_volume_from_snapshot_2_1")
+
     # ========================
 
     # ==========
@@ -880,6 +924,15 @@ class DateraDriver(san.SanISCSIDriver):
         self._issue_api_request(URL_TEMPLATES['ai_inst']().format(
             app_inst_name), method='put', body=data, api_version='2')
 
+    def _manage_existing_2_1(self, volume, existing_ref):
+        self._manage_existing_2(volume, existing_ref)
+        app_inst_name, si_name, vol_name = existing_ref.split(":")
+        url = URL_TEMPLATES['vol_inst'](si_name, vol_name).format(
+            app_inst_name)
+        metadata = {M_MANAGED: True}
+        self._store_metadata(
+            url, metadata, "manage_existing_2_1")
+
     # ==========
 
     # ===================
@@ -917,6 +970,15 @@ class DateraDriver(san.SanISCSIDriver):
             URL_TEMPLATES['ai_inst']().format(app_inst_name),
             api_version='2')
         return self._get_size(volume, app_inst, si_name, vol_name)
+
+    def _manage_existing_get_size_2_1(self, volume, existing_ref):
+        result = self._manage_existing_get_size_2(self, volume, existing_ref)
+        app_inst_name, si_name, vol_name = existing_ref.split(":")
+        url = URL_TEMPLATES['vol_inst'](si_name, vol_name).format(
+            app_inst_name)
+        metadata = {}
+        self._store_metadata(url, metadata, "manage_existing_get_size_2_1")
+        return result
 
     def _get_size(self, volume, app_inst=None, si_name=None, vol_name=None):
         """Helper method for getting the size of a backend object
@@ -1039,6 +1101,15 @@ class DateraDriver(san.SanISCSIDriver):
         self._issue_api_request(URL_TEMPLATES['ai_inst']().format(
             _get_name(volume['id'])), method='put', body=data, api_version='2')
 
+    def _unmanage_2_1(self, volume):
+        self._unmanage_2(volume)
+        policies = self._get_policies_for_resource(volume)
+        store_name, vol_name = self._scrape_template(policies)
+        url = URL_TEMPLATES['vol_inst'](store_name, vol_name).format(
+            _get_name(volume['id']))
+        metadata = {M_MANAGED: False}
+        self._store_metadata(url, metadata, "unmanage_2_1")
+
     # ============
 
     # ================
@@ -1140,8 +1211,138 @@ class DateraDriver(san.SanISCSIDriver):
                               'service again.'))
     # ==========
 
+    # ===========
+    # = Tenancy =
+    # ===========
+
+    def _create_tenant(self, tenant):
+        params = {'name': tenant}
+        self._issue_api_request(
+            'tenants', method='post', body=params, conflict_ok=True,
+            api_version='2.1')
+
+    # ===========
+
+    # ============
+    # = Metadata =
+    # ============
+
+    def _get_metadata(self, obj_url):
+        url = "/".join((obj_url.rstrip("/"), "metadata"))
+        mdata = self._issue_api_request(url, api_version="2.1").get("data")
+        # Make sure we only grab the relevant keys
+        filter_mdata = {k: json.loads(mdata[k]) for k in mdata if k in M_KEYS}
+        # Metadata lists are strings separated by the "|" character
+        return filter_mdata
+
+    def _store_metadata(self, obj_url, data, calling_func_name):
+        mdata = self._get_metadata(obj_url)
+        new_call_entry = (calling_func_name, self.HEADER_DATA['Datera-Driver'])
+        if mdata.get(M_CALL):
+            mdata[M_CALL].append(new_call_entry)
+        else:
+            mdata[M_CALL] = [new_call_entry]
+        mdata.update(data)
+        mdata.update(self.HEADER_DATA)
+        data_s = {k: json.dumps(v) for k, v in data.items()}
+        url = "/".join((obj_url.rstrip("/"), "metadata"))
+        return self._issue_api_request(url, method="put", api_version="2.1",
+                                       body=data_s)
+    # ============
+
+    # =======
+    # = QoS =
+    # =======
+
+    def _update_qos(self, resource, policies):
+        url = URL_TEMPLATES['vol_inst'](
+            policies['default_storage_name'],
+            policies['default_volume_name']) + '/performance_policy'
+        url = url.format(_get_name(resource['id']))
+        type_id = resource.get('volume_type_id', None)
+        if type_id is not None:
+            # Filter for just QOS policies in result. All of their keys
+            # should end with "max"
+            fpolicies = {k: int(v) for k, v in
+                         policies.items() if k.endswith("max")}
+            # Filter all 0 values from being passed
+            fpolicies = dict(filter(lambda _v: _v[1] > 0, fpolicies.items()))
+            if fpolicies:
+                self._issue_api_request(url, 'post', body=fpolicies,
+                                        api_version='2')
+
+    # =======
+
+    # ============
+    # = IP Pools =
+    # ============
+
+    def _get_ip_pool_for_string_ip(self, ip):
+        """Takes a string ipaddress and return the ip_pool API object dict """
+        pool = 'default'
+        ip_obj = ipaddress.ip_address(six.text_type(ip))
+        ip_pools = self._issue_api_request('access_network_ip_pools',
+                                           api_version='2')
+        for ip_pool, ipdata in ip_pools.items():
+            for access, adata in ipdata['network_paths'].items():
+                if not adata.get('start_ip'):
+                    continue
+                pool_if = ipaddress.ip_interface(
+                    "/".join((adata['start_ip'], str(adata['netmask']))))
+                if ip_obj in pool_if.network:
+                    pool = ip_pool
+        return self._issue_api_request(
+            "access_network_ip_pools/{}".format(pool), api_version='2')['path']
+
+    # ============
+
+    # ===========
+    # = Polling =
+    # ===========
+
+    def _snap_poll(self, url):
+        eventlet.sleep(DEFAULT_SNAP_SLEEP)
+        TIMEOUT = 10
+        retry = 0
+        poll = True
+        while poll and not retry >= TIMEOUT:
+            retry += 1
+            snap = self._issue_api_request(url, api_version='2')
+            if snap['op_state'] == 'available':
+                poll = False
+            else:
+                eventlet.sleep(1)
+        if retry >= TIMEOUT:
+            raise exception.VolumeDriverException(
+                message=_('Snapshot not ready.'))
+
+    def _si_poll(self, volume, policies):
+        # Initial 4 second sleep required for some Datera versions
+        eventlet.sleep(DEFAULT_SI_SLEEP)
+        TIMEOUT = 10
+        retry = 0
+        check_url = URL_TEMPLATES['si_inst'](
+            policies['default_storage_name']).format(_get_name(volume['id']))
+        poll = True
+        while poll and not retry >= TIMEOUT:
+            retry += 1
+            si = self._issue_api_request(check_url, api_version='2')
+            if si['op_state'] == 'available':
+                poll = False
+            else:
+                eventlet.sleep(1)
+        if retry >= TIMEOUT:
+            raise exception.VolumeDriverException(
+                message=_('Resource not ready.'))
+
+    # ===========
+
     def _get_lunid(self):
         return 0
+
+    # ============================
+    # = Volume-Types/Extra-Specs =
+    # ============================
 
     def _init_vendor_properties(self):
         """Create a dictionary of vendor unique properties.
@@ -1352,101 +1553,11 @@ class DateraDriver(san.SanISCSIDriver):
                 pass
         return policies
 
-    def _snap_poll(self, url):
-        eventlet.sleep(DEFAULT_SNAP_SLEEP)
-        TIMEOUT = 10
-        retry = 0
-        poll = True
-        while poll and not retry >= TIMEOUT:
-            retry += 1
-            snap = self._issue_api_request(url, api_version='2')
-            if snap['op_state'] == 'available':
-                poll = False
-            else:
-                eventlet.sleep(1)
-        if retry >= TIMEOUT:
-            raise exception.VolumeDriverException(
-                message=_('Snapshot not ready.'))
+    # ============================
 
-    def _si_poll(self, volume, policies):
-        # Initial 4 second sleep required for some Datera versions
-        eventlet.sleep(DEFAULT_SI_SLEEP)
-        TIMEOUT = 10
-        retry = 0
-        check_url = URL_TEMPLATES['si_inst'](
-            policies['default_storage_name']).format(_get_name(volume['id']))
-        poll = True
-        while poll and not retry >= TIMEOUT:
-            retry += 1
-            si = self._issue_api_request(check_url, api_version='2')
-            if si['op_state'] == 'available':
-                poll = False
-            else:
-                eventlet.sleep(1)
-        if retry >= TIMEOUT:
-            raise exception.VolumeDriverException(
-                message=_('Resource not ready.'))
-
-    def _update_qos(self, resource, policies):
-        url = URL_TEMPLATES['vol_inst'](
-            policies['default_storage_name'],
-            policies['default_volume_name']) + '/performance_policy'
-        url = url.format(_get_name(resource['id']))
-        type_id = resource.get('volume_type_id', None)
-        if type_id is not None:
-            # Filter for just QOS policies in result. All of their keys
-            # should end with "max"
-            fpolicies = {k: int(v) for k, v in
-                         policies.items() if k.endswith("max")}
-            # Filter all 0 values from being passed
-            fpolicies = dict(filter(lambda _v: _v[1] > 0, fpolicies.items()))
-            if fpolicies:
-                self._issue_api_request(url, 'post', body=fpolicies,
-                                        api_version='2')
-
-    def _get_ip_pool_for_string_ip(self, ip):
-        """Takes a string ipaddress and return the ip_pool API object dict """
-        pool = 'default'
-        ip_obj = ipaddress.ip_address(six.text_type(ip))
-        ip_pools = self._issue_api_request('access_network_ip_pools',
-                                           api_version='2')
-        for ip_pool, ipdata in ip_pools.items():
-            for access, adata in ipdata['network_paths'].items():
-                if not adata.get('start_ip'):
-                    continue
-                pool_if = ipaddress.ip_interface(
-                    "/".join((adata['start_ip'], str(adata['netmask']))))
-                if ip_obj in pool_if.network:
-                    pool = ip_pool
-        return self._issue_api_request(
-            "access_network_ip_pools/{}".format(pool), api_version='2')['path']
-
-    def _create_tenant(self, tenant):
-        params = {'name': tenant}
-        self._issue_api_request(
-            'tenants', method='post', body=params, conflict_ok=True,
-            api_version='2.1')
-
-    def _get_metadata(self, obj_url):
-        url = "/".join((obj_url.rstrip("/"), "metadata"))
-        mdata = self._issue_api_request(url, api_version="2.1").get("data")
-        # Make sure we only grab the relevant keys
-        filter_mdata = {k: json.loads(mdata[k]) for k in mdata if k in M_KEYS}
-        # Metadata lists are strings separated by the "|" character
-        return filter_mdata
-
-    def _store_metadata(self, obj_url, data, calling_func_name):
-        mdata = self._get_metadata(obj_url)
-        if mdata.get(M_CALL):
-            mdata[M_CALL].append(calling_func_name)
-        else:
-            mdata[M_CALL] = [calling_func_name]
-        mdata.update(data)
-        mdata.update(self.HEADER_DATA)
-        data_s = {k: json.dumps(v) for k, v in data.items()}
-        url = "/".join((obj_url.rstrip("/"), "metadata"))
-        return self._issue_api_request(url, method="put", api_version="2.1",
-                                       body=data_s)
+    # ================
+    # = API Requests =
+    # ================
 
     def _request(self, connection_string, method, payload, header, cert_data):
         LOG.debug("Endpoint for Datera API call: %s", connection_string)
@@ -1614,3 +1725,5 @@ class DateraDriver(san.SanISCSIDriver):
                                     conflict_ok=conflict_ok)
 
         return data
+
+    # ================
