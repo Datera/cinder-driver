@@ -637,7 +637,11 @@ class DateraDriver(san.SanISCSIDriver):
             for si_name in storage_instances.keys():
                 acl_url = (URL_TEMPLATES['si']() + "/{}/acl_policy").format(
                     _get_name(volume['id']), si_name)
-                data = {'initiator_groups': [initiator_group_path]}
+                existing_acl = self._issue_api_request(acl_url,
+                                                       method="get",
+                                                       api_version='2')
+                existing_acl.append(initiator_group_path)
+                data = {'initiator_groups': existing_acl}
                 self._issue_api_request(acl_url,
                                         method="put",
                                         body=data,
