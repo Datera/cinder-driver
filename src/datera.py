@@ -640,8 +640,10 @@ class DateraDriver(san.SanISCSIDriver):
                 existing_acl = self._issue_api_request(acl_url,
                                                        method="get",
                                                        api_version='2')
-                existing_acl.append(initiator_group_path)
-                data = {'initiator_groups': existing_acl}
+                data = {}
+                data['initiators'] = existing_acl['initiators']
+                data['initiator_groups'] = existing_acl['initiator_groups']
+                data['initiator_groups'].append(initiator_group_path)
                 self._issue_api_request(acl_url,
                                         method="put",
                                         body=data,
