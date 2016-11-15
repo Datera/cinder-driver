@@ -252,6 +252,8 @@ class DateraDriver(san.SanISCSIDriver):
         if self.datera_debug:
             utils.setup_tracing(['method'])
         self.tenant_id = self.configuration.datera_tenant_id
+        if self.tenant_id.lower() == 'none':
+            self.tenant_id = None
         self.api_check = time.time()
         self.api_cache = []
 
@@ -266,10 +268,7 @@ class DateraDriver(san.SanISCSIDriver):
             raise exception.InvalidInput(msg)
 
         self.login()
-        # Create the Datera tenant if specified in the config
-        tid = self.tenant_id.lower() if self.tenant_id else self.tenant_id
-        if tid is not None and tid != 'map':
-            self._create_tenant(self.tenant_id)
+        self._create_tenant()
 
     # =================
     # = Create Volume =
@@ -326,7 +325,7 @@ class DateraDriver(san.SanISCSIDriver):
         self._update_qos(volume, policies)
 
     def _create_volume_2_1(self, volume):
-        raise NotImplementedError()
+        tenant = self._create_tenant(volume)
         policies = self._get_policies_for_resource(volume)
         num_replicas = int(policies['replica_count'])
         storage_name = policies['default_storage_name']
@@ -366,7 +365,8 @@ class DateraDriver(san.SanISCSIDriver):
                     ]
                 })
         self._issue_api_request(
-            URL_TEMPLATES['ai'](), 'post', body=app_params, api_version='2.1')
+            URL_TEMPLATES['ai'](), 'post', body=app_params, api_version='2.1',
+            tenant=tenant)
         self._update_qos(volume, policies)
 
         metadata = {}
@@ -422,14 +422,15 @@ class DateraDriver(san.SanISCSIDriver):
         if reonline:
             self._create_export_2(None, volume, None)
 
-    # def _extend_volume_2_1(self, volume, new_size):
-    #     self._extend_volume_2(volume, new_size)
-    #     policies = self._get_policies_for_resource(volume)
-    #     store_name, vol_name = self._scrape_template(policies)
-    #     url = URL_TEMPLATES['vol_inst'](
-    #             store_name, vol_name).format(_get_name(volume['id']))
-    #     metadata = {}
-    #     self._store_metadata(url, metadata, "extend_volume_2_1")
+    def _extend_volume_2_1(self, volume, new_size):
+        self._extend_volume_2(volume, new_size)
+        # self._create_tenant(volume)
+        # policies = self._get_policies_for_resource(volume)
+        # store_name, vol_name = self._scrape_template(policies)
+        # url = URL_TEMPLATES['vol_inst'](
+        #         store_name, vol_name).format(_get_name(volume['id']))
+        # metadata = {}
+        # self._store_metadata(url, metadata, "extend_volume_2_1")
 
     # =================
 
@@ -1226,11 +1227,22 @@ class DateraDriver(san.SanISCSIDriver):
     # = Tenancy =
     # ===========
 
-    def _create_tenant(self, tenant):
-        params = {'name': tenant}
-        self._issue_api_request(
-            'tenants', method='post', body=params, conflict_ok=True,
-            api_version='2.1')
+    def _create_tenant(self, volume=None):
+        # Create the Datera tenant if specified in the config
+        # Otherwise use the tenant provided
+        if self.tenant_id is None:
+            tenant = None
+        elif self.tenant_id.lower() == "map" and volume:
+            tenant = volume["project_id"]
+        else:
+            tenant = self.tenant_id
+
+        if tenant:
+            params = {'name': tenant}
+            self._issue_api_request(
+                'tenants', method='post', body=params, conflict_ok=True,
+                api_version='2.1')
+        return tenant
 
     # ===========
 
@@ -1706,6 +1718,8 @@ class DateraDriver(san.SanISCSIDriver):
 
         if tenant:
             header['tenant'] = tenant
+        elif self.tenant_id:
+            header['tenant'] = self.tenant_id
 
         client_cert = self.configuration.driver_client_cert
         client_cert_key = self.configuration.driver_client_cert_key
