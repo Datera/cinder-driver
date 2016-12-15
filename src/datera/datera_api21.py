@@ -19,11 +19,11 @@ import re
 import uuid
 
 import eventlet
-from oslo_utils import excutils
 
 from cinder.i18n import _, _LI, _LW, _LE
 from cinder import exception
 from cinder.volume import utils as volutils
+from oslo_utils import excutils
 from oslo_utils import units
 
 import cinder.volume.drivers.datera.datera_common as datc
@@ -103,8 +103,9 @@ class DateraApi(object):
         policies = self._get_policies_for_resource(volume)
         template = policies['template']
         if template:
-            LOG.warn(_LW("Volume size not extended due to template binding: "
-                         "volume: %s, template: %s"), volume, template)
+            LOG.warning(_LW("Volume size not extended due to template binding:"
+                            " volume: %(volume)s, template: %(template)s"),
+                        volume=volume, template=template)
             return
 
         # Offline App Instance, if necessary
@@ -115,7 +116,7 @@ class DateraApi(object):
             api_version='2.1', tenant=tenant)
         if app_inst['data']['admin_state'] == 'online':
             reonline = True
-            self._detach_volume_2_1(None, volume, delete_initiator=False)
+            self._detach_volume_2_1(None, volume)
         # Change Volume Size
         app_inst = datc._get_name(volume['id'])
         data = {
@@ -154,14 +155,14 @@ class DateraApi(object):
             'create_mode': 'openstack',
             'name': datc._get_name(volume['id']),
             'uuid': str(volume['id']),
-            'clone_src': src,
+            'clone_volume_src': {'path': src},
         }
         self._issue_api_request(
             datc.URL_TEMPLATES['ai'](), 'post', body=data, api_version='2.1',
             tenant=tenant)
 
         if volume['size'] > src_vref['size']:
-            self.extend_volume(volume, volume['size'])
+            self._extend_volume_2_1(volume, volume['size'])
         url = datc.URL_TEMPLATES['ai_inst']().format(
             datc._get_name(volume['id']))
         volume_type = self._get_volume_type_obj(volume)
@@ -327,8 +328,9 @@ class DateraApi(object):
                                                        tenant=tenant)['data']
                 data = {}
                 data['initiators'] = existing_acl['initiators']
-                for group in existing_acl['initiator_groups']:
-                    group.pop('tenant')
+                # data.pop('tenant')
+                # for group in existing_acl['initiator_groups']:
+                #     group.pop('tenant')
                 data['initiator_groups'] = existing_acl['initiator_groups']
                 data['initiator_groups'].append({"path": initiator_group_path})
                 self._issue_api_request(acl_url,
@@ -372,10 +374,6 @@ class DateraApi(object):
     # = Detach Volume =
     # =================
 
-    @datc._api_lookup
-    def detach_volume(self, context, volume, attachment=None):
-        pass
-
     def _detach_volume_2_1(self, context, volume, attachment=None):
         tenant = self._create_tenant(volume)
         url = datc.URL_TEMPLATES['ai_inst']().format(
@@ -394,7 +392,6 @@ class DateraApi(object):
         # TODO(_alastor_): Make acl cleaning multi-attach aware
         self._clean_acl_2_1(volume, tenant)
 
-        self._detach_volume_2(context, volume, attachment)
         url = datc.URL_TEMPLATES['ai_inst']().format(
             datc._get_name(volume['id']))
         metadata = {}
@@ -525,7 +522,7 @@ class DateraApi(object):
 
         for snap in snapshots['data']:
             if snap['uuid'] == snapshot['id']:
-                found_ts = snap['timestamp']
+                found_ts = snap['utc_ts']
                 break
         else:
             raise exception.NotFound
@@ -541,7 +538,7 @@ class DateraApi(object):
                 'create_mode': 'openstack',
                 'uuid': str(volume['id']),
                 'name': datc._get_name(volume['id']),
-                'clone_src': src,
+                'clone_snapshot_src': {'path': src},
             })
         self._issue_api_request(
             datc.URL_TEMPLATES['ai'](),
@@ -580,9 +577,9 @@ class DateraApi(object):
             app_inst_name, storage_inst_name, vol_name = existing_ref.split(
                 ":")
             tenant = None
-        LOG.debug("Managing existing Datera volume %(volume)s.  "
-                  "Changing name to %(existing)s",
-                  existing=existing_ref, volume=datc._get_name(volume['id']))
+        LOG.debug("Managing existing Datera volume %s  "
+                  "Changing name to %s",
+                  datc._get_name(volume['id']), existing_ref)
         data = {'name': datc._get_name(volume['id'])}
         self._issue_api_request(datc.URL_TEMPLATES['ai_inst']().format(
             app_inst_name), method='put', body=data, api_version='2.1',
@@ -607,7 +604,7 @@ class DateraApi(object):
         app_inst_name, si_name, vol_name = existing_ref.split(":")
         app_inst = self._issue_api_request(
             datc.URL_TEMPLATES['ai_inst']().format(app_inst_name),
-            api_version='2')
+            api_version='2.1', tenant=tenant)
         return self._get_size_2_1(
             volume, tenant, app_inst, si_name, vol_name)
     #     result = self._manage_existing_get_size_2(self, volume, existing_ref)
@@ -633,26 +630,37 @@ class DateraApi(object):
             vol_url = datc.URL_TEMPLATES['ai_inst']().format(
                 datc._get_name(volume['id']))
             app_inst = self._issue_api_request(
-                vol_url, api_version='2.1', tenant=tenant)
-        size = app_inst[
-            'storage_instances'][si_name]['volumes'][vol_name]['size']
+                vol_url, api_version='2.1', tenant=tenant)['data']
+        if 'data' in app_inst:
+            app_inst = app_inst['data']
+        sis = app_inst['storage_instances']
+        found_si = None
+        for si in sis:
+            if si['name'] == si_name:
+                found_si = si
+                break
+        found_vol = None
+        for vol in found_si['volumes']:
+            if vol['name'] == vol_name:
+                found_vol = vol
+        size = found_vol['size']
         return size
 
     # =========================
     # = Get Manageable Volume =
     # =========================
 
-    def _get_manageable_volumes_2(self, cinder_volumes, marker, limit, offset,
-                                  sort_keys, sort_dirs):
+    def _get_manageable_volumes_2_1(self, cinder_volumes, marker, limit,
+                                    offset, sort_keys, sort_dirs):
         # Use the first volume to determine the tenant we're working under
         if cinder_volumes:
-            tenant = self.create_tenant(cinder_volumes[0])
+            tenant = self._create_tenant(cinder_volumes[0])
         else:
             tenant = None
         LOG.debug("Listing manageable Datera volumes")
         app_instances = self._issue_api_request(
             datc.URL_TEMPLATES['ai'](), api_version='2.1',
-            tenant=tenant)['data'].values()
+            tenant=tenant)['data']
 
         results = []
 
@@ -705,7 +713,7 @@ class DateraApi(object):
     # ============
 
     def _unmanage_2_1(self, volume):
-        tenant = self.create_tenant(volume)
+        tenant = self._create_tenant(volume)
         LOG.debug("Unmanaging Cinder volume %s.  Changing name to %s",
                   volume['id'], datc._get_unmanaged(volume['id']))
         data = {'name': datc._get_unmanaged(volume['id'])}

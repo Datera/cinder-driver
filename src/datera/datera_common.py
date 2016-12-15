@@ -16,10 +16,11 @@
 import functools
 import logging
 import re
+import six
 import time
 
 from cinder import exception
-from cinder.i18n import _
+from cinder.i18n import _, _LI, _LE
 
 LOG = logging.getLogger(__name__)
 OS_PREFIX = "OS-"
@@ -141,25 +142,31 @@ def _api_lookup(func):
                 api_version = api_versions[index]
             except (IndexError, KeyError):
                 msg = _("No compatible API version found for this product: "
-                        "api_versions -> %s")
-                LOG.error(msg, api_version)
-                raise exception.DateraAPIException(msg % api_version)
-            name = "_" + "_".join(
-                (func.func_name, api_version.replace(".", "_")))
+                        "api_versions -> %(api_version)s, %(func)s")
+                LOG.error(msg, api_version=api_version, func=func)
+                raise exception.DateraAPIException(msg % (api_version, func))
+            # Py27
             try:
-                print("trying {}".format(name))
+                name = "_" + "_".join(
+                    (func.func_name, api_version.replace(".", "_")))
+            # Py3+
+            except AttributeError:
+                name = "_" + "_".join(
+                    (func.__name__, api_version.replace(".", "_")))
+            try:
+                LOG.info(_LI("Trying method: %s"), name)
                 return getattr(obj, name)(*args[1:], **kwargs)
             except AttributeError as e:
                 # If we find the attribute name in the error message
                 # then we continue otherwise, raise to prevent masking
                 # errors
-                if name not in e[0]:
+                if name not in six.text_type(e):
                     raise
                 else:
-                    print(e)
+                    LOG.info(e)
                     index -= 1
             except exception.DateraAPIException as e:
-                if "UnsupportedVersionError" in e[0]:
+                if "UnsupportedVersionError" in six.text_type(e):
                     index -= 1
                 else:
                     raise
@@ -196,4 +203,7 @@ def _get_supported_api_versions(driver):
             if ("api_req" in resp.json() or
                     str(resp.json().get("code")) == "99"):
                 results.append(version)
+    except KeyError:
+        LOG.error(_LE("No supported API versions available, Please upgrade "
+                      "your Datera EDF software"))
     return results

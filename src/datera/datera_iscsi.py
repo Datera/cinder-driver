@@ -32,9 +32,9 @@ from cinder.volume.drivers.san import san
 from cinder.volume import qos_specs
 from cinder.volume import volume_types
 
-import cinder.volume.drivers.datera.datera_common as datc
 import cinder.volume.drivers.datera.datera_api2 as api2
 import cinder.volume.drivers.datera.datera_api21 as api21
+import cinder.volume.drivers.datera.datera_common as datc
 
 
 LOG = logging.getLogger(__name__)

@@ -14,17 +14,17 @@
 #    under the License.
 
 import logging
-import uuid
 import re
+import uuid
 
 import eventlet
 import ipaddress
 import six
-from oslo_utils import excutils
 
 from cinder.i18n import _, _LI, _LW, _LE
 from cinder import exception
 from cinder.volume import utils as volutils
+from oslo_utils import excutils
 from oslo_utils import units
 
 import cinder.volume.drivers.datera.datera_common as datc
@@ -97,8 +97,9 @@ class DateraApi(object):
         policies = self._get_policies_for_resource(volume)
         template = policies['template']
         if template:
-            LOG.warn(_LW("Volume size not extended due to template binding: "
-                         "volume: %s, template: %s"), volume, template)
+            LOG.warning(_LW("Volume size not extended due to template binding:"
+                            " volume: %(volume)s, template: %(template)s"),
+                        volume=volume, template=template)
             return
 
         # Offline App Instance, if necessary
@@ -109,7 +110,7 @@ class DateraApi(object):
             api_version='2')
         if app_inst['admin_state'] == 'online':
             reonline = True
-            self._detach_volume_2(None, volume, delete_initiator=False)
+            self._detach_volume_2(None, volume)
         # Change Volume Size
         app_inst = datc._get_name(volume['id'])
         data = {
@@ -147,7 +148,7 @@ class DateraApi(object):
             datc.URL_TEMPLATES['ai'](), 'post', body=data, api_version='2')
 
         if volume['size'] > src_vref['size']:
-            self.extend_volume(volume, volume['size'])
+            self._extend_volume_2(volume, volume['size'])
 
     # =================
     # = Delete Volume =
@@ -489,9 +490,10 @@ class DateraApi(object):
                 _("existing_ref argument must be of this format:"
                   "app_inst_name:storage_inst_name:vol_name"))
         app_inst_name = existing_ref.split(":")[0]
-        LOG.debug("Managing existing Datera volume %(volume)s.  "
-                  "Changing name to %(existing)s",
-                  existing=existing_ref, volume=datc._get_name(volume['id']))
+        LOG.debug("Managing existing Datera volume %s.  "
+                  "Changing name to %s",
+                  datc._get_name(volume['id']),
+                  existing_ref)
         data = {'name': datc._get_name(volume['id'])}
         self._issue_api_request(datc.URL_TEMPLATES['ai_inst']().format(
             app_inst_name), method='put', body=data, api_version='2')
@@ -733,7 +735,7 @@ class DateraApi(object):
         template = policies['template']
         if template:
             result = self._issue_api_request(
-                datc.URL_TEMPLATES['at']().format(template))
+                datc.URL_TEMPLATES['at']().format(template), api_version='2')
             sname, st = list(result['storage_templates'].items())[0]
             vname = list(st['volume_templates'].keys())[0]
         return sname, vname
