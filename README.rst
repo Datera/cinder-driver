@@ -12,6 +12,16 @@ Datera Cinder Repository
      - Additional Capabilities Introduced
      - Supported Datera Product Versions
      - URL
+   * - Ocata
+     - ocata-v2.3.0
+     - 2.3.0
+     - Templates, Tenants, 2.1 API Support, Code Restructure
+     - 1.0, 1.1, 2.1
+     - Driver now consists of a folder "datera/" with the following files:
+       * datera_iscsi.py
+       * datera_api2.py
+       * datera_api21.py
+       * datera_common.py
    * - Newton
      - newton-v2.2.1
      - 2.2.1
