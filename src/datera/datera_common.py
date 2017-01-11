@@ -14,13 +14,15 @@
 #    under the License.
 
 import functools
-import logging
 import re
 import six
 import time
 
+from oslo_log import log as logging
+
 from cinder import exception
 from cinder.i18n import _, _LI, _LE
+
 
 LOG = logging.getLogger(__name__)
 OS_PREFIX = "OS-"
@@ -195,15 +197,15 @@ def _get_supported_api_versions(driver):
         resp = driver._request(url, "get", None, header, cert_data)
         data = resp.json()
         results = [elem.strip("v") for elem in data['api_versions']]
-    except exception.DateraAPIException:
+    except (exception.DateraAPIException, KeyError):
         # Fallback to pre-endpoint logic
-        for version in API_VERSIONS:
+        for version in API_VERSIONS[0:-1]:
             url = '%s://%s:%s/v%s' % (protocol, host, port, version)
             resp = driver._request(url, "get", None, header, cert_data)
             if ("api_req" in resp.json() or
                     str(resp.json().get("code")) == "99"):
                 results.append(version)
-    except KeyError:
-        LOG.error(_LE("No supported API versions available, Please upgrade "
-                      "your Datera EDF software"))
+            else:
+                LOG.error(_LE("No supported API versions available, "
+                              "Please upgrade your Datera EDF software"))
     return results

@@ -14,17 +14,18 @@
 #    under the License.
 
 import json
-import logging
 import re
 import uuid
 
 import eventlet
 
+from oslo_log import log as logging
+from oslo_utils import excutils
+from oslo_utils import units
+
 from cinder.i18n import _, _LI, _LW, _LE
 from cinder import exception
 from cinder.volume import utils as volutils
-from oslo_utils import excutils
-from oslo_utils import units
 
 import cinder.volume.drivers.datera.datera_common as datc
 
@@ -133,12 +134,6 @@ class DateraApi(object):
         # Online Volume, if it was online before
         if reonline:
             self._create_export_2_1(None, volume, None)
-
-        # store_name, vol_name = self._scrape_template(policies)
-        # url = datc.URL_TEMPLATES['vol_inst'](
-        #         store_name, vol_name).format(datc._get_name(volume['id']))
-        # metadata = {}
-        # self._store_metadata(url, metadata, "extend_volume_2_1", tenant)
 
     # =================
     # = Cloned Volume =
@@ -328,9 +323,6 @@ class DateraApi(object):
                                                        tenant=tenant)['data']
                 data = {}
                 data['initiators'] = existing_acl['initiators']
-                # data.pop('tenant')
-                # for group in existing_acl['initiator_groups']:
-                #     group.pop('tenant')
                 data['initiator_groups'] = existing_acl['initiator_groups']
                 data['initiator_groups'].append({"path": initiator_group_path})
                 self._issue_api_request(acl_url,
@@ -456,11 +448,6 @@ class DateraApi(object):
                                        api_version='2.1', tenant=tenant)
         snapu = "/".join((url, snap['data']['timestamp']))
         self._snap_poll_2_1(snapu, tenant)
-    #     store_name, vol_name = self._scrape_template(policies)
-    #     url = datc.URL_TEMPLATES['vol_inst'](store_name, vol_name).format(
-    #             datc._get_name(snapshot['volume_id']))
-    #     metadata = {}
-    #     self._store_metadata(url, metadata, "create_snapshot_2_1", tenant)
 
     # ===================
     # = Delete Snapshot =
@@ -497,12 +484,6 @@ class DateraApi(object):
             msg = _LI("Tried to delete snapshot %s, but was not found in "
                       "Datera cluster. Continuing with delete.")
             LOG.info(msg, datc._get_name(snapshot['id']))
-    #     store_name, vol_name = self._scrape_template(policies)
-    #     url = datc.URL_TEMPLATES['vol_inst'](store_name, vol_name).format(
-    #         datc._get_name(snapshot['volume_id']))
-    #     metadata = {}
-    #     self._store_metadata(
-    #         url, metadata, "create_volume_from_snapshot_2_1", tenant)
 
     # ========================
     # = Volume From Snapshot =
@@ -547,12 +528,6 @@ class DateraApi(object):
             api_version='2.1',
             tenant=tenant)
 
-        # url = datc.URL_TEMPLATES['vol_inst'](store_name, vol_name).format(
-        #     datc._get_name(snapshot['volume_id']))
-        # metadata = {}
-        # self._store_metadata(
-        #     url, metadata, "create_volume_from_snapshot_2_1", tenant)
-
     # ==========
     # = Manage =
     # ==========
@@ -584,11 +559,6 @@ class DateraApi(object):
         self._issue_api_request(datc.URL_TEMPLATES['ai_inst']().format(
             app_inst_name), method='put', body=data, api_version='2.1',
             tenant=tenant)
-        # url = datc.URL_TEMPLATES['vol_inst'](si_name, vol_name).format(
-        #     app_inst_name)
-        # metadata = {M_MANAGED: True}
-        # self._store_metadata(
-        #     url, metadata, "manage_existing_2_1", tenant)
 
     # ===================
     # = Manage Get Size =
@@ -607,14 +577,6 @@ class DateraApi(object):
             api_version='2.1', tenant=tenant)
         return self._get_size_2_1(
             volume, tenant, app_inst, si_name, vol_name)
-    #     result = self._manage_existing_get_size_2(self, volume, existing_ref)
-    #     app_inst_name, si_name, vol_name = existing_ref.split(":")
-    #     url = datc.URL_TEMPLATES['vol_inst'](si_name, vol_name).format(
-    #         app_inst_name)
-    #     metadata = {}
-    #     self._store_metadata(url, metadata, "manage_existing_get_size_2_1",
-    #                          tenant)
-    #     return result
 
     def _get_size_2_1(self, volume, tenant=None, app_inst=None, si_name=None,
                       vol_name=None):
@@ -723,12 +685,6 @@ class DateraApi(object):
             body=data,
             api_version='2.1',
             tenant=tenant)
-    #     policies = self._get_policies_for_resource(volume)
-    #     store_name, vol_name = self._scrape_template(policies)
-    #     url = datc.URL_TEMPLATES['vol_inst'](store_name, vol_name).format(
-    #         datc._get_name(volume['id']))
-    #     metadata = {M_MANAGED: False}
-    #     self._store_metadata(url, metadata, "unmanage_2_1", tenant)
 
     # ================
     # = Volume Stats =

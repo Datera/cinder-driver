@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import logging
 import re
 import uuid
 
@@ -21,11 +20,13 @@ import eventlet
 import ipaddress
 import six
 
+from oslo_log import log as logging
+from oslo_utils import excutils
+from oslo_utils import units
+
 from cinder.i18n import _, _LI, _LW, _LE
 from cinder import exception
 from cinder.volume import utils as volutils
-from oslo_utils import excutils
-from oslo_utils import units
 
 import cinder.volume.drivers.datera.datera_common as datc
 
