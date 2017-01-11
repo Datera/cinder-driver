@@ -22,6 +22,8 @@ Datera Cinder Repository
        * datera_api2.py
        * datera_api21.py
        * datera_common.py
+       ****IMPORTANT****: cinder.conf must be changed so `volume_driver = 
+       cinder.volume.drivers.datera.datera_iscsi.DateraDriver`
    * - Newton
      - newton-v2.3.0
      - 2.3.0
@@ -32,6 +34,8 @@ Datera Cinder Repository
        * datera_api2.py
        * datera_api21.py
        * datera_common.py
+       ****IMPORTANT****: cinder.conf must be changed so `volume_driver = 
+       cinder.volume.drivers.datera.datera_iscsi.DateraDriver`
    * - Newton
      - newton-v2.2.1
      - 2.2.1
@@ -60,6 +64,8 @@ Datera Cinder Repository
        * datera_api2.py
        * datera_api21.py
        * datera_common.py
+       ****IMPORTANT****: cinder.conf must be changed so `volume_driver = 
+       cinder.volume.drivers.datera.datera_iscsi.DateraDriver`
    * - Mitaka
      - mitaka-v2.1.1
      - 2.1.1
