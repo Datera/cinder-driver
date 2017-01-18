@@ -146,7 +146,8 @@ def _api_lookup(func):
                 msg = _("No compatible API version found for this product: "
                         "api_versions -> %(api_version)s, %(func)s")
                 LOG.error(msg, api_version=api_version, func=func)
-                raise exception.DateraAPIException(msg % (api_version, func))
+                raise exception.DateraAPIException(
+                    msg % {'api_version': api_version, 'func': func})
             # Py27
             try:
                 name = "_" + "_".join(

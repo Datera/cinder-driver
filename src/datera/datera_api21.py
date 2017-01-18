@@ -528,6 +528,36 @@ class DateraApi(object):
             api_version='2.1',
             tenant=tenant)
 
+    # ======================
+    # = Glance Image Clone =
+    # ======================
+    @datc._api_lookup
+    def _clone_image_2_1(self, ctxt, volume, image_location, image_meta,
+                         image_service):
+        LOG.debug("CLONE IMAGE Called")
+        LOG.debug("volume: {}".format(volume))
+        LOG.debug("image_location: {}".format(image_location))
+        LOG.debug("image_meta: {}".format(image_meta))
+        LOG.debug("image_service: {}".format(image_service))
+
+        visibility = image_meta.get('visibility', None)
+        if visibility and visibility == 'public':
+            public = True
+        elif image_meta.get('is_public', False):
+            public = True
+        else:
+            if image_meta['owner'] == volume['project_id']:
+                public = True
+        if not public:
+            LOG.warning(_LW("Requested image is not "
+                            "accessible by current Tenant."))
+            return ({}, False)
+
+        return ({}, False)
+
+    def _volume_exists_2_1(volid):
+        pass
+
     # ==========
     # = Manage =
     # ==========

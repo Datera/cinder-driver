@@ -227,6 +227,14 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
     def create_volume_from_snapshot(self, volume, snapshot):
         pass
 
+    # ======================
+    # = Glance Image Clone =
+    # ======================
+    @datc._api_lookup
+    def clone_image(self, ctxt, volume, image_location, image_meta,
+                    image_service):
+        pass
+
     # ==========
     # = Manage =
     # ==========
