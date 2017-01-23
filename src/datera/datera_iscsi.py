@@ -118,6 +118,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
             self.tenant_id = None
         self.api_check = time.time()
         self.api_cache = []
+        self.api_timeout = 0
 
     def do_setup(self, context):
         # If we can't authenticate through the old and new method, just fail

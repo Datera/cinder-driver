@@ -180,6 +180,7 @@ def _get_supported_api_versions(driver):
     t = time.time()
     if driver.api_cache and driver.api_timeout - t < API_TIMEOUT:
         return driver.api_cache
+    driver.api_timeout = t + API_TIMEOUT
     results = []
     host = driver.configuration.san_ip
     port = driver.configuration.datera_api_port
