@@ -90,8 +90,9 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
               Volume Manage/Unmanage support
         2.3 - Templates, Tenants, Snapshot Polling,
               2.1 Api Version Support, Restructure
+        2.3.1 - Scalability bugfixes
     """
-    VERSION = '2.3'
+    VERSION = '2.3.1'
 
     CI_WIKI_NAME = "datera-ci"
 

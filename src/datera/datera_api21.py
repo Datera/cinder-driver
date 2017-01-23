@@ -280,17 +280,10 @@ class DateraApi(object):
             initiator_group = datc.INITIATOR_GROUP_PREFIX + volume['id']
             found = False
             initiator = connector['initiator']
-            current_initiators = self._issue_api_request(
-                'initiators', api_version='2.1', tenant=tenant)
-            for iqn, values in current_initiators.items():
-                if initiator == iqn:
-                    found = True
-                    break
-            # If we didn't find a matching initiator, create one
             if not found:
                 data = {'id': initiator, 'name': initiator_name}
                 # Try and create the initiator
-                # If we get a conflict, ignore it because race conditions
+                # If we get a conflict, ignore it
                 self._issue_api_request("initiators",
                                         method="post",
                                         body=data,
