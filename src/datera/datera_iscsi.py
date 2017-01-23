@@ -174,7 +174,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
     # =================
 
     @datc._api_lookup
-    def ensure_export(self, context, volume, connector):
+    def ensure_export(self, context, volume, connector=None):
         """Gets the associated account, retrieves CHAP info and updates."""
 
     # =========================
