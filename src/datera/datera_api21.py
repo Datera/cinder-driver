@@ -394,6 +394,20 @@ class DateraApi(object):
             # an already deleted object
             pass
 
+    def _check_for_acl_2_1(self, initiator_path):
+        """Returns True if an acl is found for initiator_path """
+        # TODO(_alastor_) when we get a /initiators/:initiator/acl_policies
+        # endpoint use that instead of this monstrosity
+        initiator_groups = self._issue_api_request("initiator_groups",
+                                                   api_version='2')
+        for ig, igdata in initiator_groups.items():
+            if initiator_path in igdata['members']:
+                LOG.debug("Found initiator_group: %s for initiator: %s",
+                          ig, initiator_path)
+                return True
+        LOG.debug("No initiator_group found for initiator: %s", initiator_path)
+        return False
+
     def _clean_acl_2_1(self, volume, tenant):
         policies = self._get_policies_for_resource(volume)
 
@@ -405,9 +419,12 @@ class DateraApi(object):
             initiator_group = self._issue_api_request(
                 acl_url, api_version='2.1', tenant=tenant)['data'][
                     'initiator_groups'][0]['path']
-            initiator_iqn_path = self._issue_api_request(
-                initiator_group.lstrip("/"), api_version='2.1', tenant=tenant)[
-                    "data"]["members"][0]["path"]
+            # TODO(_alastor_): Re-enable this when we get a force-delete
+            # option on the /initiators endpoint
+            # initiator_iqn_path = self._issue_api_request(
+            #     initiator_group.lstrip("/"), api_version='2.1',
+            #     tenant=tenant)[
+            #         "data"]["members"][0]["path"]
             # Clear out ACL and delete initiator group
             self._issue_api_request(acl_url,
                                     method="put",
@@ -418,11 +435,13 @@ class DateraApi(object):
                                     method="delete",
                                     api_version='2.1',
                                     tenant=tenant)
-            if not self._check_for_acl_2(initiator_iqn_path):
-                self._issue_api_request(initiator_iqn_path.lstrip("/"),
-                                        method="delete",
-                                        api_version='2.1',
-                                        tenant=tenant)
+            # TODO(_alastor_): Re-enable this when we get a force-delete
+            # option on the /initiators endpoint
+            # if not self._check_for_acl_2_1(initiator_iqn_path):
+            #     self._issue_api_request(initiator_iqn_path.lstrip("/"),
+            #                             method="delete",
+            #                             api_version='2.1',
+            #                             tenant=tenant)
         except (IndexError, exception.NotFound):
             LOG.debug("Did not find any initiator groups for volume: %s",
                       volume)
