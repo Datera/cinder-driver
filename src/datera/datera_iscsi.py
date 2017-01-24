@@ -13,23 +13,17 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import json
 import time
 import uuid
 
-import eventlet
 from oslo_config import cfg
 from oslo_log import log as logging
-import requests
 import six
 
-from cinder import context
 from cinder import exception
 from cinder.i18n import _
 from cinder import utils
 from cinder.volume.drivers.san import san
-from cinder.volume import qos_specs
-from cinder.volume import volume_types
 
 import cinder.volume.drivers.datera.datera_api2 as api2
 import cinder.volume.drivers.datera.datera_api21 as api21
@@ -120,6 +114,8 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
         self.api_check = time.time()
         self.api_cache = []
         self.api_timeout = 0
+
+        datc.register_driver(self)
 
     def do_setup(self, context):
         # If we can't authenticate through the old and new method, just fail
@@ -535,205 +531,3 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
         # ###### End QoS Settings ###### #
 
         return properties, 'DF'
-
-    def _get_volume_type_obj(self, resource):
-        type_id = resource.get('volume_type_id', None)
-        # Handle case of volume with no type.  We still want the
-        # specified defaults from above
-        if type_id:
-            ctxt = context.get_admin_context()
-            volume_type = volume_types.get_volume_type(ctxt, type_id)
-        else:
-            volume_type = None
-        return volume_type
-
-    def _get_policies_for_resource(self, resource):
-        """Get extra_specs and qos_specs of a volume_type.
-
-        This fetches the scoped keys from the volume type. Anything set from
-         qos_specs will override key/values set from extra_specs.
-        """
-        volume_type = self._get_volume_type_obj(resource)
-        # Handle case of volume with no type.  We still want the
-        # specified defaults from above
-        if volume_type:
-            specs = volume_type.get('extra_specs')
-        else:
-            specs = {}
-
-        # Set defaults:
-        policies = {k.lstrip('DF:'): str(v['default']) for (k, v)
-                    in self._init_vendor_properties()[0].items()}
-
-        if volume_type:
-            # Populate updated value
-            for key, value in specs.items():
-                if ':' in key:
-                    fields = key.split(':')
-                    key = fields[1]
-                    policies[key] = value
-
-            qos_specs_id = volume_type.get('qos_specs_id')
-            if qos_specs_id is not None:
-                ctxt = context.get_admin_context()
-                qos_kvs = qos_specs.get_qos_specs(ctxt, qos_specs_id)['specs']
-                if qos_kvs:
-                    policies.update(qos_kvs)
-        # Cast everything except booleans int that can be cast
-        for k, v in policies.items():
-            # Handle String Boolean case
-            if v == 'True' or v == 'False':
-                policies[k] = policies[k] == 'True'
-                continue
-            # Int cast
-            try:
-                policies[k] = int(v)
-            except ValueError:
-                pass
-        return policies
-
-    # ================
-    # = API Requests =
-    # ================
-
-    def _request(self, connection_string, method, payload, header, cert_data):
-        LOG.debug("Endpoint for Datera API call: %s", connection_string)
-        try:
-            response = getattr(requests, method)(connection_string,
-                                                 data=payload, headers=header,
-                                                 verify=False, cert=cert_data)
-            return response
-        except requests.exceptions.RequestException as ex:
-            msg = _(
-                'Failed to make a request to Datera cluster endpoint due '
-                'to the following reason: %s') % six.text_type(
-                ex.message)
-            LOG.error(msg)
-            raise exception.DateraAPIException(msg)
-
-    def _raise_response(self, response):
-        msg = _('Request to Datera cluster returned bad status:'
-                ' %(status)s | %(reason)s') % {
-                    'status': response.status_code,
-                    'reason': response.reason}
-        LOG.error(msg)
-        raise exception.DateraAPIException(msg)
-
-    def _handle_bad_status(self,
-                           response,
-                           connection_string,
-                           method,
-                           payload,
-                           header,
-                           cert_data,
-                           sensitive=False,
-                           conflict_ok=False):
-        if (response.status_code == 400 and
-                connection_string.endswith("api_versions")):
-            # Raise the exception, but don't log any error.  We'll just fall
-            # back to the old style of determining API version.  We make this
-            # request a lot, so logging it is just noise
-            raise exception.DateraAPIException
-        if not sensitive:
-            LOG.debug(("Datera Response URL: %s\n"
-                       "Datera Response Payload: %s\n"
-                       "Response Object: %s\n"),
-                      response.url,
-                      payload,
-                      vars(response))
-        if response.status_code == 404:
-            raise exception.NotFound(response.json()['message'])
-        elif response.status_code in [403, 401]:
-            raise exception.NotAuthorized()
-        elif response.status_code == 409 and conflict_ok:
-            # Don't raise, because we're expecting a conflict
-            pass
-        elif response.status_code == 503:
-            current_retry = 0
-            while current_retry <= self.retry_attempts:
-                LOG.debug("Datera 503 response, trying request again")
-                eventlet.sleep(self.interval)
-                resp = self._request(connection_string,
-                                     method,
-                                     payload,
-                                     header,
-                                     cert_data)
-                if resp.ok:
-                    return response.json()
-                elif resp.status_code != 503:
-                    self._raise_response(resp)
-        else:
-            self._raise_response(response)
-
-    @datc._authenticated
-    def _issue_api_request(self, resource_url, method='get', body=None,
-                           sensitive=False, conflict_ok=False,
-                           api_version='2', tenant=None):
-        """All API requests to Datera cluster go through this method.
-
-        :param resource_url: the url of the resource
-        :param method: the request verb
-        :param body: a dict with options for the action_type
-        :param sensitive: Bool, whether request should be obscured from logs
-        :param conflict_ok: Bool, True to suppress ConflictError exceptions
-        during this request
-        :param api_version: The Datera api version for the request
-        :param tenant: The tenant header value for the request (only applicable
-        to 2.1 product versions and later)
-        :returns: a dict of the response from the Datera cluster
-        """
-        host = self.configuration.san_ip
-        port = self.configuration.datera_api_port
-        api_token = self.datera_api_token
-
-        payload = json.dumps(body, ensure_ascii=False)
-        payload.encode('utf-8')
-
-        header = {'Content-Type': 'application/json; charset=utf-8'}
-        header.update(self.HEADER_DATA)
-
-        protocol = 'http'
-        if self.configuration.driver_use_ssl:
-            protocol = 'https'
-
-        if api_token:
-            header['Auth-Token'] = api_token
-
-        if tenant == "all":
-            header['tenant'] = tenant
-        elif tenant and '/root' not in tenant:
-            header['tenant'] = "".join(("/root/", tenant))
-        elif tenant and '/root' in tenant:
-            header['tenant'] = tenant
-        elif self.tenant_id and self.tenant_id.lower() != "map":
-            header['tenant'] = self.tenant_id
-
-        client_cert = self.configuration.driver_client_cert
-        client_cert_key = self.configuration.driver_client_cert_key
-        cert_data = None
-
-        if client_cert:
-            protocol = 'https'
-            cert_data = (client_cert, client_cert_key)
-
-        connection_string = '%s://%s:%s/v%s/%s' % (protocol, host, port,
-                                                   api_version, resource_url)
-
-        response = self._request(connection_string,
-                                 method,
-                                 payload,
-                                 header,
-                                 cert_data)
-
-        data = response.json()
-
-        if not response.ok:
-            self._handle_bad_status(response,
-                                    connection_string,
-                                    method,
-                                    payload,
-                                    header,
-                                    cert_data,
-                                    conflict_ok=conflict_ok)
-
-        return data
