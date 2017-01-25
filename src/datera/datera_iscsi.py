@@ -60,7 +60,10 @@ d_opts = [
                     "If set to 'None' --> Datera tenant ID will not be used "
                     "during volume provisioning\n"
                     "If set to anything else --> Datera tenant ID will be the "
-                    "provided value")
+                    "provided value"),
+    cfg.BoolOpt('datera_disable_profiler',
+                default=False,
+                help="Set to True to disable profiling in the Datera driver"),
 ]
 
 
@@ -114,6 +117,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
         self.api_check = time.time()
         self.api_cache = []
         self.api_timeout = 0
+        self.do_profile = not self.configuration.datera_disable_profiler
 
         datc.register_driver(self)
 

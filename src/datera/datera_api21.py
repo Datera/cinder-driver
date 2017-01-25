@@ -18,6 +18,8 @@ import re
 import uuid
 
 import eventlet
+import ipaddress
+import six
 
 from oslo_log import log as logging
 from oslo_utils import excutils
@@ -334,7 +336,7 @@ class DateraApi(object):
                     tenant=tenant)['path']
             # Fallback to trying reasonable IP based guess
             else:
-                initiator_ip_pool_path = self._get_ip_pool_for_string_ip(
+                initiator_ip_pool_path = self._get_ip_pool_for_string_ip_2_1(
                     connector['ip'])
 
             ip_pool_url = datc.URL_TEMPLATES['si_inst'](
@@ -392,7 +394,7 @@ class DateraApi(object):
         # TODO(_alastor_) when we get a /initiators/:initiator/acl_policies
         # endpoint use that instead of this monstrosity
         initiator_groups = self._issue_api_request("initiator_groups",
-                                                   api_version='2')
+                                                   api_version='2.1')
         for ig, igdata in initiator_groups.items():
             if initiator_path in igdata['members']:
                 LOG.debug("Found initiator_group: %s for initiator: %s",
@@ -887,3 +889,25 @@ class DateraApi(object):
             if fpolicies:
                 self._issue_api_request(url, 'post', body=fpolicies,
                                         api_version='2.1', tenant=tenant)
+
+    # ============
+    # = IP Pools =
+    # ============
+
+    def _get_ip_pool_for_string_ip_2_1(self, ip):
+        """Takes a string ipaddress and return the ip_pool API object dict """
+        pool = 'default'
+        ip_obj = ipaddress.ip_address(six.text_type(ip))
+        ip_pools = self._issue_api_request('access_network_ip_pools',
+                                           api_version='2.1')
+        for ipdata in ip_pools['data']:
+            for adata in ipdata['network_paths']:
+                if not adata.get('start_ip'):
+                    continue
+                pool_if = ipaddress.ip_interface(
+                    "/".join((adata['start_ip'], str(adata['netmask']))))
+                if ip_obj in pool_if.network:
+                    pool = ipdata['name']
+        return self._issue_api_request(
+            "access_network_ip_pools/{}".format(pool),
+            api_version='2.1')['path']

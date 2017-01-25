@@ -19,6 +19,7 @@ import re
 import six
 import time
 import types
+import uuid
 
 import eventlet
 import requests
@@ -165,8 +166,18 @@ def _api_lookup(func):
                 name = "_" + "_".join(
                     (func.__name__, api_version.replace(".", "_")))
             try:
-                LOG.info(_LI("Trying method: %s"), name)
-                return getattr(obj, name)(*args[1:], **kwargs)
+                if obj.do_profile:
+                    LOG.info(_LI("Trying method: %s"), name)
+                    call_id = uuid.uuid4()
+                    LOG.debug("Profiling method: %s, id %s", name, call_id)
+                    t1 = time.time()
+                result = getattr(obj, name)(*args[1:], **kwargs)
+                if obj.do_profile:
+                    t2 = time.time()
+                    timedelta = round(t2 - t1, 3)
+                    LOG.debug("Profile for method %s, id %s: %ss",
+                              name, call_id, timedelta)
+                return result
             except AttributeError as e:
                 # If we find the attribute name in the error message
                 # then we continue otherwise, raise to prevent masking
@@ -285,6 +296,7 @@ def _get_policies_for_resource(driver, resource):
 
 def _request(driver, connection_string, method, payload, header, cert_data):
     LOG.debug("Endpoint for Datera API call: %s", connection_string)
+    LOG.debug("Payload for Datera API call: %s", payload)
     try:
         response = getattr(requests, method)(connection_string,
                                              data=payload, headers=header,
@@ -323,13 +335,6 @@ def _handle_bad_status(driver,
         # back to the old style of determining API version.  We make this
         # request a lot, so logging it is just noise
         raise exception.DateraAPIException
-    if not sensitive:
-        LOG.debug(("Datera Response URL: %s\n"
-                   "Datera Response Payload: %s\n"
-                   "Response Object: %s\n"),
-                  response.url,
-                  payload,
-                  vars(response))
     if response.status_code == 404:
         raise exception.NotFound(response.json()['message'])
     elif response.status_code in [403, 401]:
@@ -409,6 +414,19 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
     connection_string = '%s://%s:%s/v%s/%s' % (protocol, host, port,
                                                api_version, resource_url)
 
+    request_id = uuid.uuid4()
+
+    if driver.do_profile:
+        t1 = time.time()
+    if not sensitive:
+        LOG.debug(("Datera Request ID: %s\n"
+                   "Datera Request URL: %s\n"
+                   "Datera Request Payload: %s\n"
+                   "Datera Request Headers: %s\n"),
+                  request_id,
+                  resource_url,
+                  payload,
+                  header)
     response = driver._request(connection_string,
                                method,
                                payload,
@@ -417,6 +435,21 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
 
     data = response.json()
 
+    timedelta = "Profiling disabled"
+    if driver.do_profile:
+        t2 = time.time()
+        timedelta = round(t2 - t1, 3)
+    if not sensitive:
+        LOG.debug(("Datera Response ID: %s\n"
+                   "Datera Response TimeDelta: %ss\n"
+                   "Datera Response URL: %s\n"
+                   "Datera Response Payload: %s\n"
+                   "Datera Response Object: %s\n"),
+                  request_id,
+                  timedelta,
+                  response.url,
+                  payload,
+                  vars(response))
     if not response.ok:
         driver._handle_bad_status(response,
                                   connection_string,
