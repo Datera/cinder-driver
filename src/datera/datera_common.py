@@ -61,8 +61,8 @@ URL_TEMPLATES = {
             '{}', volume_name)),
     'at': lambda: 'app_templates/{}'}
 
-DEFAULT_SI_SLEEP = 10
-DEFAULT_SNAP_SLEEP = 5
+DEFAULT_SI_SLEEP = 0
+DEFAULT_SNAP_SLEEP = 0
 INITIATOR_GROUP_PREFIX = "IG-"
 API_VERSIONS = ["2", "2.1"]
 API_TIMEOUT = 20
@@ -171,6 +171,7 @@ def _api_lookup(func):
                     call_id = uuid.uuid4()
                     LOG.debug("Profiling method: %s, id %s", name, call_id)
                     t1 = time.time()
+                    obj.thread_local = call_id
                 result = getattr(obj, name)(*args[1:], **kwargs)
                 if obj.do_profile:
                     t2 = time.time()
@@ -419,12 +420,16 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
     if driver.do_profile:
         t1 = time.time()
     if not sensitive:
-        LOG.debug(("Datera Request ID: %s\n"
+        LOG.debug(("\nDatera Trace ID: %s\n"
+                   "Datera Request ID: %s\n"
                    "Datera Request URL: %s\n"
+                   "Datera Request Method: %s\n"
                    "Datera Request Payload: %s\n"
                    "Datera Request Headers: %s\n"),
+                  driver.thread_local,
                   request_id,
                   resource_url,
+                  method,
                   payload,
                   header)
     response = driver._request(connection_string,
@@ -440,11 +445,13 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
         t2 = time.time()
         timedelta = round(t2 - t1, 3)
     if not sensitive:
-        LOG.debug(("Datera Response ID: %s\n"
+        LOG.debug(("\nDatera Trace ID: %s\n"
+                   "Datera Response ID: %s\n"
                    "Datera Response TimeDelta: %ss\n"
                    "Datera Response URL: %s\n"
                    "Datera Response Payload: %s\n"
                    "Datera Response Object: %s\n"),
+                  driver.thread_local,
                   request_id,
                   timedelta,
                   response.url,

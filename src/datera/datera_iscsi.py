@@ -16,6 +16,7 @@
 import time
 import uuid
 
+from eventlet.green import threading
 from oslo_config import cfg
 from oslo_log import log as logging
 import six
@@ -118,6 +119,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
         self.api_cache = []
         self.api_timeout = 0
         self.do_profile = not self.configuration.datera_disable_profiler
+        self.thread_local = threading.local()
 
         datc.register_driver(self)
 
