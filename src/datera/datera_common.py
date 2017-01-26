@@ -467,6 +467,7 @@ def register_driver(driver):
                  _get_volume_type_obj,
                  _get_policies_for_resource,
                  _request,
+                 _raise_response,
                  _handle_bad_status,
                  _issue_api_request]:
         # PY27
