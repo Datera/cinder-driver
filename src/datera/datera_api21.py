@@ -14,6 +14,7 @@
 #    under the License.
 
 # import json
+import random
 import re
 import uuid
 
@@ -217,7 +218,12 @@ class DateraApi(object):
         storage_instances = app_inst["storage_instances"]
         si = storage_instances[0]
 
-        portal = si['access']['ips'][0] + ':3260'
+        # randomize portal chosen
+        choice = 0
+        policies = self._get_policies_for_resource(volume)
+        if policies["round_robin"]:
+            choice = random.randint(0, 1)
+        portal = si['access']['ips'][choice] + ':3260'
         iqn = si['access']['iqn']
         if multipath:
             portals = [p + ':3260' for p in si['access']['ips']]
@@ -482,10 +488,17 @@ class DateraApi(object):
         snap_temp = datc.URL_TEMPLATES['vol_inst'](
             store_name, vol_name) + '/snapshots'
         snapu = snap_temp.format(datc._get_name(snapshot['volume_id']))
-        snapshots = self._issue_api_request(snapu,
-                                            method='get',
-                                            api_version='2.1',
-                                            tenant=tenant)
+        try:
+            snapshots = self._issue_api_request(snapu,
+                                                method='get',
+                                                api_version='2.1',
+                                                tenant=tenant)
+        except exception.NotFound:
+            msg = _LI("Tried to delete snapshot %s, but parent volume %s was "
+                      "not found in Datera cluster. Continuing with delete.")
+            LOG.info(msg,
+                     datc._get_name(snapshot['id']),
+                     datc._get_name(snapshot['volume_id']))
 
         try:
             for snap in snapshots['data']:

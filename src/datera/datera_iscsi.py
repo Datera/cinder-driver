@@ -418,6 +418,13 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
         """
 
         properties = {}
+        self._set_property(
+            properties,
+            "DF:round_robin",
+            "Datera Round Robin Portals",
+            _("True to round robin the provided portals for a target"),
+            "boolean",
+            default=False)
 
         if self.configuration.get('datera_debug_replica_count_override'):
             replica_count = 1

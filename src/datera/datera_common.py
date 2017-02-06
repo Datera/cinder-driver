@@ -422,12 +422,13 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
     if not sensitive:
         LOG.debug(("\nDatera Trace ID: %s\n"
                    "Datera Request ID: %s\n"
-                   "Datera Request URL: %s\n"
+                   "Datera Request URL: /v%s/%s\n"
                    "Datera Request Method: %s\n"
                    "Datera Request Payload: %s\n"
                    "Datera Request Headers: %s\n"),
                   driver.thread_local,
                   request_id,
+                  api_version,
                   resource_url,
                   method,
                   payload,
