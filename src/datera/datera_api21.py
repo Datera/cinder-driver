@@ -488,6 +488,7 @@ class DateraApi(object):
         snap_temp = datc.URL_TEMPLATES['vol_inst'](
             store_name, vol_name) + '/snapshots'
         snapu = snap_temp.format(datc._get_name(snapshot['volume_id']))
+        snapshots = []
         try:
             snapshots = self._issue_api_request(snapu,
                                                 method='get',
@@ -499,6 +500,7 @@ class DateraApi(object):
             LOG.info(msg,
                      datc._get_name(snapshot['id']),
                      datc._get_name(snapshot['volume_id']))
+            return
 
         try:
             for snap in snapshots['data']:
