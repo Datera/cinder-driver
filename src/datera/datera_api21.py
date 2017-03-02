@@ -48,6 +48,7 @@ class DateraApi(object):
         storage_name = policies['default_storage_name']
         volume_name = policies['default_volume_name']
         template = policies['template']
+        placement = policies['placement_mode']
 
         if template:
             app_params = (
@@ -73,6 +74,7 @@ class DateraApi(object):
                                 {
                                     'name': volume_name,
                                     'size': volume['size'],
+                                    'placement_mode': placement,
                                     'replica_count': num_replicas,
                                     'snapshot_policies': [
                                     ]
@@ -313,7 +315,7 @@ class DateraApi(object):
                 not policies['acl_allow_all']):
             initiator_name = "OpenStack_{}_{}".format(
                 self.driver_prefix, str(uuid.uuid4())[:4])
-            initiator_group = datc.INITIATOR_GROUP_PREFIX + volume['id']
+            initiator_group = datc.INITIATOR_GROUP_PREFIX + str(uuid.uuid4())
             found = False
             initiator = connector['initiator']
             if not found:

@@ -89,6 +89,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
         2.3 - Templates, Tenants, Snapshot Polling,
               2.1 Api Version Support, Restructure
         2.3.1 - Scalability bugfixes
+        2.3.2 - Volume Placement, ACL multi-attach bugfix
     """
     VERSION = '2.3.1'
 
@@ -418,6 +419,17 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
         """
 
         properties = {}
+
+        self._set_property(
+            properties,
+            "DF:placement_mode",
+            "Datera Volume Placement",
+            _("'single_flash' for single-flash-replica placement, "
+              "'all_flash' for all-flash-replica placement, "
+              "'hybrid' for hybrid placement"),
+            "string",
+            default="hybrid")
+
         self._set_property(
             properties,
             "DF:round_robin",
