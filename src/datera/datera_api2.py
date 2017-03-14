@@ -17,12 +17,10 @@ import re
 import uuid
 
 import eventlet
-import ipaddress
+import ipaddr as ipaddress
 import six
 
-from oslo_log import log as logging
-from oslo_utils import excutils
-from oslo_utils import units
+from cinder.openstack.common import log as logging
 
 from cinder.i18n import _, _LI, _LW, _LE
 from cinder import exception
@@ -618,9 +616,9 @@ class DateraApi(object):
                     'driver_version': self.VERSION,
                     'storage_protocol': 'iSCSI',
                     'total_capacity_gb': (
-                        int(results['total_capacity']) / units.Gi),
+                        int(results['total_capacity'])),
                     'free_capacity_gb': (
-                        int(results['available_capacity']) / units.Gi),
+                        int(results['available_capacity'])),
                     'reserved_percentage': 0,
                 }
 
@@ -658,11 +656,11 @@ class DateraApi(object):
                                               sensitive=True, api_version='2')
             self.datera_api_token = results['key']
         except exception.NotAuthorized:
-            with excutils.save_and_reraise_exception():
                 LOG.error(_LE('Logging into the Datera cluster failed. Please '
                               'check your username and password set in the '
                               'cinder.conf and start the cinder-volume '
                               'service again.'))
+                raise
 
     # ===========
     # = Polling =

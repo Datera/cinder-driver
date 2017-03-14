@@ -17,13 +17,12 @@ import time
 import uuid
 
 from eventlet.green import threading
-from oslo_config import cfg
-from oslo_log import log as logging
+from oslo.config import cfg
+from cinder.openstack.common import log as logging
 import six
 
 from cinder import exception
 from cinder.i18n import _
-from cinder import interface
 from cinder import utils
 from cinder.volume.drivers.san import san
 
@@ -38,10 +37,6 @@ d_opts = [
     cfg.StrOpt('datera_api_port',
                default='7717',
                help='Datera API port.'),
-    cfg.StrOpt('datera_api_version',
-               default='2',
-               deprecated_for_removal=True,
-               help='Datera API version.'),
     cfg.IntOpt('datera_503_timeout',
                default='120',
                help='Timeout for HTTP 503 retry messages'),
@@ -70,12 +65,9 @@ d_opts = [
 
 
 CONF = cfg.CONF
-CONF.import_opt('driver_use_ssl', 'cinder.volume.driver')
 CONF.register_opts(d_opts)
 
 
-@interface.volumedriver
-@six.add_metaclass(utils.TraceWrapperWithABCMetaclass)
 class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
 
     """The OpenStack Datera Driver
@@ -113,8 +105,6 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
         self.datera_debug = self.configuration.datera_debug
         self.datera_api_versions = []
 
-        if self.datera_debug:
-            utils.setup_tracing(['method'])
         self.tenant_id = self.configuration.datera_tenant_id
         if self.tenant_id and self.tenant_id.lower() == 'none':
             self.tenant_id = None
@@ -383,178 +373,3 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
 
     def _get_lunid(self):
         return 0
-
-    # ============================
-    # = Volume-Types/Extra-Specs =
-    # ============================
-
-    def _init_vendor_properties(self):
-        """Create a dictionary of vendor unique properties.
-
-        This method creates a dictionary of vendor unique properties
-        and returns both created dictionary and vendor name.
-        Returned vendor name is used to check for name of vendor
-        unique properties.
-
-        - Vendor name shouldn't include colon(:) because of the separator
-          and it is automatically replaced by underscore(_).
-          ex. abc:d -> abc_d
-        - Vendor prefix is equal to vendor name.
-          ex. abcd
-        - Vendor unique properties must start with vendor prefix + ':'.
-          ex. abcd:maxIOPS
-
-        Each backend driver needs to override this method to expose
-        its own properties using _set_property() like this:
-
-        self._set_property(
-            properties,
-            "vendorPrefix:specific_property",
-            "Title of property",
-            _("Description of property"),
-            "type")
-
-        : return dictionary of vendor unique properties
-        : return vendor name
-
-        prefix: DF --> Datera Fabric
-        """
-
-        properties = {}
-
-        self._set_property(
-            properties,
-            "DF:placement_mode",
-            "Datera Volume Placement",
-            _("'single_flash' for single-flash-replica placement, "
-              "'all_flash' for all-flash-replica placement, "
-              "'hybrid' for hybrid placement"),
-            "string",
-            default="hybrid")
-
-        self._set_property(
-            properties,
-            "DF:round_robin",
-            "Datera Round Robin Portals",
-            _("True to round robin the provided portals for a target"),
-            "boolean",
-            default=False)
-
-        if self.configuration.get('datera_debug_replica_count_override'):
-            replica_count = 1
-        else:
-            replica_count = 3
-        self._set_property(
-            properties,
-            "DF:replica_count",
-            "Datera Volume Replica Count",
-            _("Specifies number of replicas for each volume. Can only be "
-              "increased once volume is created"),
-            "integer",
-            minimum=1,
-            default=replica_count)
-
-        self._set_property(
-            properties,
-            "DF:acl_allow_all",
-            "Datera ACL Allow All",
-            _("True to set acl 'allow_all' on volumes created.  Cannot be "
-              "changed on volume once set"),
-            "boolean",
-            default=False)
-
-        self._set_property(
-            properties,
-            "DF:ip_pool",
-            "Datera IP Pool",
-            _("Specifies IP pool to use for volume"),
-            "string",
-            default="default")
-
-        self._set_property(
-            properties,
-            "DF:template",
-            "Datera Template",
-            _("Specifies Template to use for volume provisioning"),
-            "string",
-            default="")
-
-        # ###### QoS Settings ###### #
-        self._set_property(
-            properties,
-            "DF:read_bandwidth_max",
-            "Datera QoS Max Bandwidth Read",
-            _("Max read bandwidth setting for volume qos, "
-              "use 0 for unlimited"),
-            "integer",
-            minimum=0,
-            default=0)
-
-        self._set_property(
-            properties,
-            "DF:default_storage_name",
-            "Datera Default Storage Instance Name",
-            _("The name to use for storage instances created"),
-            "string",
-            default="storage-1")
-
-        self._set_property(
-            properties,
-            "DF:default_volume_name",
-            "Datera Default Volume Name",
-            _("The name to use for volumes created"),
-            "string",
-            default="volume-1")
-
-        self._set_property(
-            properties,
-            "DF:write_bandwidth_max",
-            "Datera QoS Max Bandwidth Write",
-            _("Max write bandwidth setting for volume qos, "
-              "use 0 for unlimited"),
-            "integer",
-            minimum=0,
-            default=0)
-
-        self._set_property(
-            properties,
-            "DF:total_bandwidth_max",
-            "Datera QoS Max Bandwidth Total",
-            _("Max total bandwidth setting for volume qos, "
-              "use 0 for unlimited"),
-            "integer",
-            minimum=0,
-            default=0)
-
-        self._set_property(
-            properties,
-            "DF:read_iops_max",
-            "Datera QoS Max iops Read",
-            _("Max read iops setting for volume qos, "
-              "use 0 for unlimited"),
-            "integer",
-            minimum=0,
-            default=0)
-
-        self._set_property(
-            properties,
-            "DF:write_iops_max",
-            "Datera QoS Max IOPS Write",
-            _("Max write iops setting for volume qos, "
-              "use 0 for unlimited"),
-            "integer",
-            minimum=0,
-            default=0)
-
-        self._set_property(
-            properties,
-            "DF:total_iops_max",
-            "Datera QoS Max IOPS Total",
-            _("Max total iops setting for volume qos, "
-              "use 0 for unlimited"),
-            "integer",
-            minimum=0,
-            default=0)
-        # ###### End QoS Settings ###### #
-
-        return properties, 'DF'

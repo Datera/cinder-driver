@@ -24,7 +24,7 @@ import uuid
 import eventlet
 import requests
 
-from oslo_log import log as logging
+from cinder.openstack.common import log as logging
 
 from cinder import context
 from cinder import exception
@@ -260,8 +260,12 @@ def _get_policies_for_resource(driver, resource):
         specs = {}
 
     # Set defaults:
-    policies = {k.lstrip('DF:'): str(v['default']) for (k, v)
-                in driver._init_vendor_properties()[0].items()}
+    policies = {
+        'replica_count': 3,
+        'placement_mode': 'hybrid',
+        'template': '',
+        'default_storage_name': 'storage-1',
+        'default_volume_name': 'volume-1'}
 
     if volume_type:
         # Populate updated value
@@ -389,8 +393,6 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
     header.update(driver.HEADER_DATA)
 
     protocol = 'http'
-    if driver.configuration.driver_use_ssl:
-        protocol = 'https'
 
     if api_token:
         header['Auth-Token'] = api_token
