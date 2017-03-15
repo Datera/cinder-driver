@@ -13,11 +13,14 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import json
+# import json
+import random
 import re
 import uuid
 
 import eventlet
+import ipaddress
+import six
 
 from oslo_log import log as logging
 from oslo_utils import excutils
@@ -45,6 +48,7 @@ class DateraApi(object):
         storage_name = policies['default_storage_name']
         volume_name = policies['default_volume_name']
         template = policies['template']
+        placement = policies['placement_mode']
 
         if template:
             app_params = (
@@ -70,6 +74,7 @@ class DateraApi(object):
                                 {
                                     'name': volume_name,
                                     'size': volume['size'],
+                                    'placement_mode': placement,
                                     'replica_count': num_replicas,
                                     'snapshot_policies': [
                                     ]
@@ -86,14 +91,14 @@ class DateraApi(object):
             tenant=tenant)
         self._update_qos_2_1(volume, policies, tenant)
 
-        metadata = {}
-        volume_type = self._get_volume_type_obj(volume)
-        if volume_type:
-            metadata.update({datc.M_TYPE: volume_type['name']})
-        metadata.update(self.HEADER_DATA)
-        url = datc.URL_TEMPLATES['ai_inst']().format(
-            datc._get_name(volume['id']))
-        self._store_metadata(url, metadata, "create_volume_2_1", tenant)
+        # metadata = {}
+        # volume_type = self._get_volume_type_obj(volume)
+        # if volume_type:
+        #     metadata.update({datc.M_TYPE: volume_type['name']})
+        # metadata.update(self.HEADER_DATA)
+        # url = datc.URL_TEMPLATES['ai_inst']().format(
+        #     datc._get_name(volume['id']))
+        # self._store_metadata(url, metadata, "create_volume_2_1", tenant)
 
     # =================
     # = Extend Volume =
@@ -158,23 +163,24 @@ class DateraApi(object):
 
         if volume['size'] > src_vref['size']:
             self._extend_volume_2_1(volume, volume['size'])
-        url = datc.URL_TEMPLATES['ai_inst']().format(
-            datc._get_name(volume['id']))
-        volume_type = self._get_volume_type_obj(volume)
-        if volume_type:
-            vtype = volume_type['name']
-        else:
-            vtype = None
-        metadata = {datc.M_TYPE: vtype,
-                    datc.M_CLONE: datc._get_name(src_vref['id'])}
-        self._store_metadata(url, metadata, "create_cloned_volume_2_1", tenant)
+        # url = datc.URL_TEMPLATES['ai_inst']().format(
+        #     datc._get_name(volume['id']))
+        # volume_type = self._get_volume_type_obj(volume)
+        # if volume_type:
+        #     vtype = volume_type['name']
+        # else:
+        #     vtype = None
+        # metadata = {datc.M_TYPE: vtype,
+        #             datc.M_CLONE: datc._get_name(src_vref['id'])}
+        # self._store_metadata(url, metadata, "create_cloned_volume_2_1",
+        #                      tenant)
 
     # =================
     # = Delete Volume =
     # =================
 
     def _delete_volume_2_1(self, volume):
-        self.detach_volume(None, volume)
+        self._detach_volume_2_1(None, volume)
         tenant = self._create_tenant(volume)
         app_inst = datc._get_name(volume['id'])
         try:
@@ -192,7 +198,7 @@ class DateraApi(object):
     # = Ensure Export =
     # =================
 
-    def _ensure_export_2_1(self, context, volume, connector):
+    def _ensure_export_2_1(self, context, volume, connector=None):
         self.create_export(context, volume, connector)
 
     # =========================
@@ -214,7 +220,12 @@ class DateraApi(object):
         storage_instances = app_inst["storage_instances"]
         si = storage_instances[0]
 
-        portal = si['access']['ips'][0] + ':3260'
+        # randomize portal chosen
+        choice = 0
+        policies = self._get_policies_for_resource(volume)
+        if policies["round_robin"]:
+            choice = random.randint(0, 1)
+        portal = si['access']['ips'][choice] + ':3260'
         iqn = si['access']['iqn']
         if multipath:
             portals = [p + ':3260' for p in si['access']['ips']]
@@ -244,9 +255,9 @@ class DateraApi(object):
                     'volume_id': volume['id'],
                     'discard': False}}
 
-        url = datc.URL_TEMPLATES['ai_inst']().format(
-            datc._get_name(volume['id']))
-        self._store_metadata(url, {}, "initialize_connection_2_1", tenant)
+        # url = datc.URL_TEMPLATES['ai_inst']().format(
+        #     datc._get_name(volume['id']))
+        # self._store_metadata(url, {}, "initialize_connection_2_1", tenant)
         return result
 
     # =================
@@ -255,6 +266,37 @@ class DateraApi(object):
 
     def _create_export_2_1(self, context, volume, connector):
         tenant = self._create_tenant(volume)
+        url = datc.URL_TEMPLATES['ai_inst']().format(
+            datc._get_name(volume['id']))
+        data = {
+            'admin_state': 'offline',
+            'force': True
+        }
+        self._issue_api_request(
+            url, method='put', body=data, api_version='2.1', tenant=tenant)
+        policies = self._get_policies_for_resource(volume)
+        store_name, _ = self._scrape_template(policies)
+        if connector and connector.get('ip'):
+            # Case where volume_type has non default IP Pool info
+            if policies['ip_pool'] != 'default':
+                initiator_ip_pool_path = self._issue_api_request(
+                    "access_network_ip_pools/{}".format(
+                        policies['ip_pool']),
+                    api_version='2.1',
+                    tenant=tenant)['path']
+            # Fallback to trying reasonable IP based guess
+            else:
+                initiator_ip_pool_path = self._get_ip_pool_for_string_ip_2_1(
+                    connector['ip'])
+
+            ip_pool_url = datc.URL_TEMPLATES['si_inst'](
+                store_name).format(datc._get_name(volume['id']))
+            ip_pool_data = {'ip_pool': {'path': initiator_ip_pool_path}}
+            self._issue_api_request(ip_pool_url,
+                                    method="put",
+                                    body=ip_pool_data,
+                                    api_version='2.1',
+                                    tenant=tenant)
         url = datc.URL_TEMPLATES['ai_inst']().format(
             datc._get_name(volume['id']))
         data = {
@@ -268,29 +310,18 @@ class DateraApi(object):
             url, api_version='2.1', tenant=tenant)
         # Handle adding initiator to product if necessary
         # Then add initiator to ACL
-        policies = self._get_policies_for_resource(volume)
-
-        store_name, _ = self._scrape_template(policies)
-
         if (connector and
                 connector.get('initiator') and
                 not policies['acl_allow_all']):
             initiator_name = "OpenStack_{}_{}".format(
                 self.driver_prefix, str(uuid.uuid4())[:4])
-            initiator_group = datc.INITIATOR_GROUP_PREFIX + volume['id']
+            initiator_group = datc.INITIATOR_GROUP_PREFIX + str(uuid.uuid4())
             found = False
             initiator = connector['initiator']
-            current_initiators = self._issue_api_request(
-                'initiators', api_version='2.1', tenant=tenant)
-            for iqn, values in current_initiators.items():
-                if initiator == iqn:
-                    found = True
-                    break
-            # If we didn't find a matching initiator, create one
             if not found:
                 data = {'id': initiator, 'name': initiator_name}
                 # Try and create the initiator
-                # If we get a conflict, ignore it because race conditions
+                # If we get a conflict, ignore it
                 self._issue_api_request("initiators",
                                         method="post",
                                         body=data,
@@ -330,37 +361,15 @@ class DateraApi(object):
                                         body=data,
                                         api_version='2.1',
                                         tenant=tenant)
-
-        if connector and connector.get('ip'):
-            # Case where volume_type has non default IP Pool info
-            if policies['ip_pool'] != 'default':
-                initiator_ip_pool_path = self._issue_api_request(
-                    "access_network_ip_pools/{}".format(
-                        policies['ip_pool']),
-                    api_version='2.1',
-                    tenant=tenant)['path']
-            # Fallback to trying reasonable IP based guess
-            else:
-                initiator_ip_pool_path = self._get_ip_pool_for_string_ip(
-                    connector['ip'])
-
-            ip_pool_url = datc.URL_TEMPLATES['si_inst'](
-                store_name).format(datc._get_name(volume['id']))
-            ip_pool_data = {'ip_pool': {'path': initiator_ip_pool_path}}
-            self._issue_api_request(ip_pool_url,
-                                    method="put",
-                                    body=ip_pool_data,
-                                    api_version='2.1',
-                                    tenant=tenant)
-
         # Check to ensure we're ready for go-time
         self._si_poll_2_1(volume, policies, tenant)
-        url = datc.URL_TEMPLATES['ai_inst']().format(
-            datc._get_name(volume['id']))
-        metadata = {}
-        # TODO(_alastor_): Figure out what we want to post with a create_export
-        # call
-        self._store_metadata(url, metadata, "create_export_2_1", tenant)
+        # url = datc.URL_TEMPLATES['ai_inst']().format(
+        #     datc._get_name(volume['id']))
+        # metadata = {}
+        # TODO(_alastor_): Figure out what we want to post with a
+        # create_export
+        # # call
+        # self._store_metadata(url, metadata, "create_export_2_1", tenant)
 
     # =================
     # = Detach Volume =
@@ -384,15 +393,29 @@ class DateraApi(object):
         # TODO(_alastor_): Make acl cleaning multi-attach aware
         self._clean_acl_2_1(volume, tenant)
 
-        url = datc.URL_TEMPLATES['ai_inst']().format(
-            datc._get_name(volume['id']))
-        metadata = {}
-        try:
-            self._store_metadata(url, metadata, "detach_volume_2_1", tenant)
-        except exception.NotFound:
-            # If the object isn't found, we probably are deleting/detaching
-            # an already deleted object
-            pass
+        # url = datc.URL_TEMPLATES['ai_inst']().format(
+        #     datc._get_name(volume['id']))
+        # metadata = {}
+        # try:
+        #     self._store_metadata(url, metadata, "detach_volume_2_1", tenant)
+        # except exception.NotFound:
+        #     # If the object isn't found, we probably are deleting/detaching
+        #     # an already deleted object
+        #     pass
+
+    def _check_for_acl_2_1(self, initiator_path):
+        """Returns True if an acl is found for initiator_path """
+        # TODO(_alastor_) when we get a /initiators/:initiator/acl_policies
+        # endpoint use that instead of this monstrosity
+        initiator_groups = self._issue_api_request("initiator_groups",
+                                                   api_version='2.1')
+        for ig, igdata in initiator_groups.items():
+            if initiator_path in igdata['members']:
+                LOG.debug("Found initiator_group: %s for initiator: %s",
+                          ig, initiator_path)
+                return True
+        LOG.debug("No initiator_group found for initiator: %s", initiator_path)
+        return False
 
     def _clean_acl_2_1(self, volume, tenant):
         policies = self._get_policies_for_resource(volume)
@@ -405,9 +428,12 @@ class DateraApi(object):
             initiator_group = self._issue_api_request(
                 acl_url, api_version='2.1', tenant=tenant)['data'][
                     'initiator_groups'][0]['path']
-            initiator_iqn_path = self._issue_api_request(
-                initiator_group.lstrip("/"), api_version='2.1', tenant=tenant)[
-                    "data"]["members"][0]["path"]
+            # TODO(_alastor_): Re-enable this when we get a force-delete
+            # option on the /initiators endpoint
+            # initiator_iqn_path = self._issue_api_request(
+            #     initiator_group.lstrip("/"), api_version='2.1',
+            #     tenant=tenant)[
+            #         "data"]["members"][0]["path"]
             # Clear out ACL and delete initiator group
             self._issue_api_request(acl_url,
                                     method="put",
@@ -418,11 +444,13 @@ class DateraApi(object):
                                     method="delete",
                                     api_version='2.1',
                                     tenant=tenant)
-            if not self._check_for_acl_2(initiator_iqn_path):
-                self._issue_api_request(initiator_iqn_path.lstrip("/"),
-                                        method="delete",
-                                        api_version='2.1',
-                                        tenant=tenant)
+            # TODO(_alastor_): Re-enable this when we get a force-delete
+            # option on the /initiators endpoint
+            # if not self._check_for_acl_2_1(initiator_iqn_path):
+            #     self._issue_api_request(initiator_iqn_path.lstrip("/"),
+            #                             method="delete",
+            #                             api_version='2.1',
+            #                             tenant=tenant)
         except (IndexError, exception.NotFound):
             LOG.debug("Did not find any initiator groups for volume: %s",
                       volume)
@@ -462,10 +490,19 @@ class DateraApi(object):
         snap_temp = datc.URL_TEMPLATES['vol_inst'](
             store_name, vol_name) + '/snapshots'
         snapu = snap_temp.format(datc._get_name(snapshot['volume_id']))
-        snapshots = self._issue_api_request(snapu,
-                                            method='get',
-                                            api_version='2.1',
-                                            tenant=tenant)
+        snapshots = []
+        try:
+            snapshots = self._issue_api_request(snapu,
+                                                method='get',
+                                                api_version='2.1',
+                                                tenant=tenant)
+        except exception.NotFound:
+            msg = _LI("Tried to delete snapshot %s, but parent volume %s was "
+                      "not found in Datera cluster. Continuing with delete.")
+            LOG.info(msg,
+                     datc._get_name(snapshot['id']),
+                     datc._get_name(snapshot['volume_id']))
+            return
 
         try:
             for snap in snapshots['data']:
@@ -527,36 +564,6 @@ class DateraApi(object):
             body=app_params,
             api_version='2.1',
             tenant=tenant)
-
-    # ======================
-    # = Glance Image Clone =
-    # ======================
-    @datc._api_lookup
-    def _clone_image_2_1(self, ctxt, volume, image_location, image_meta,
-                         image_service):
-        LOG.debug("CLONE IMAGE Called")
-        LOG.debug("volume: {}".format(volume))
-        LOG.debug("image_location: {}".format(image_location))
-        LOG.debug("image_meta: {}".format(image_meta))
-        LOG.debug("image_service: {}".format(image_service))
-
-        visibility = image_meta.get('visibility', None)
-        if visibility and visibility == 'public':
-            public = True
-        elif image_meta.get('is_public', False):
-            public = True
-        else:
-            if image_meta['owner'] == volume['project_id']:
-                public = True
-        if not public:
-            LOG.warning(_LW("Requested image is not "
-                            "accessible by current Tenant."))
-            return ({}, False)
-
-        return ({}, False)
-
-    def _volume_exists_2_1(volid):
-        pass
 
     # ==========
     # = Manage =
@@ -754,28 +761,29 @@ class DateraApi(object):
     # = Metadata =
     # ============
 
-    def _get_metadata(self, obj_url, tenant):
-        url = "/".join((obj_url.rstrip("/"), "metadata"))
-        mdata = self._issue_api_request(
-            url, api_version="2.1", tenant=tenant).get("data")
-        # Make sure we only grab the relevant keys
-        filter_mdata = {k: json.loads(mdata[k])
-                        for k in mdata if k in datc.M_KEYS}
-        return filter_mdata
+    # def _get_metadata(self, obj_url, tenant):
+    #     url = "/".join((obj_url.rstrip("/"), "metadata"))
+    #     mdata = self._issue_api_request(
+    #         url, api_version="2.1", tenant=tenant).get("data")
+    #     # Make sure we only grab the relevant keys
+    #     filter_mdata = {k: json.loads(mdata[k])
+    #                     for k in mdata if k in datc.M_KEYS}
+    #     return filter_mdata
 
-    def _store_metadata(self, obj_url, data, calling_func_name, tenant):
-        mdata = self._get_metadata(obj_url, tenant)
-        new_call_entry = (calling_func_name, self.HEADER_DATA['Datera-Driver'])
-        if mdata.get(datc.M_CALL):
-            mdata[datc.M_CALL].append(new_call_entry)
-        else:
-            mdata[datc.M_CALL] = [new_call_entry]
-        mdata.update(data)
-        mdata.update(self.HEADER_DATA)
-        data_s = {k: json.dumps(v) for k, v in data.items()}
-        url = "/".join((obj_url.rstrip("/"), "metadata"))
-        return self._issue_api_request(url, method="put", api_version="2.1",
-                                       body=data_s, tenant=tenant)
+    # def _store_metadata(self, obj_url, data, calling_func_name, tenant):
+    #     mdata = self._get_metadata(obj_url, tenant)
+    #     new_call_entry = (calling_func_name,
+    #                       self.HEADER_DATA['Datera-Driver'])
+    #     if mdata.get(datc.M_CALL):
+    #         mdata[datc.M_CALL].append(new_call_entry)
+    #     else:
+    #         mdata[datc.M_CALL] = [new_call_entry]
+    #     mdata.update(data)
+    #     mdata.update(self.HEADER_DATA)
+    #     data_s = {k: json.dumps(v) for k, v in data.items()}
+    #     url = "/".join((obj_url.rstrip("/"), "metadata"))
+    #     return self._issue_api_request(url, method="put", api_version="2.1",
+    #                                    body=data_s, tenant=tenant)
     # =========
     # = Login =
     # =========
@@ -810,7 +818,7 @@ class DateraApi(object):
 
     def _snap_poll_2_1(self, url, tenant):
         eventlet.sleep(datc.DEFAULT_SNAP_SLEEP)
-        TIMEOUT = 10
+        TIMEOUT = 20
         retry = 0
         poll = True
         while poll and not retry >= TIMEOUT:
@@ -905,3 +913,25 @@ class DateraApi(object):
             if fpolicies:
                 self._issue_api_request(url, 'post', body=fpolicies,
                                         api_version='2.1', tenant=tenant)
+
+    # ============
+    # = IP Pools =
+    # ============
+
+    def _get_ip_pool_for_string_ip_2_1(self, ip):
+        """Takes a string ipaddress and return the ip_pool API object dict """
+        pool = 'default'
+        ip_obj = ipaddress.ip_address(six.text_type(ip))
+        ip_pools = self._issue_api_request('access_network_ip_pools',
+                                           api_version='2.1')
+        for ipdata in ip_pools['data']:
+            for adata in ipdata['network_paths']:
+                if not adata.get('start_ip'):
+                    continue
+                pool_if = ipaddress.ip_interface(
+                    "/".join((adata['start_ip'], str(adata['netmask']))))
+                if ip_obj in pool_if.network:
+                    pool = ipdata['name']
+        return self._issue_api_request(
+            "access_network_ip_pools/{}".format(pool),
+            api_version='2.1')['path']

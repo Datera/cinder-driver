@@ -172,7 +172,7 @@ class DateraApi(object):
     # = Ensure Export =
     # =================
 
-    def _ensure_export_2(self, context, volume, connector):
+    def _ensure_export_2(self, context, volume, connector=None):
         return self._create_export_2(context, volume, connector)
 
     # =========================
