@@ -128,7 +128,7 @@ Datera Cinder Repository
      - https://raw.githubusercontent.com/Datera/cinder-driver/liberty-v2/src/datera.py
 
 =======
-Configuration Options
+Cinder.conf Options
 =======
 
 .. list-table:: Description of Datera volume driver configuration options
@@ -137,8 +137,6 @@ Configuration Options
 
    * - Configuration option = Default value
      - Description
-   * - **[DEFAULT]**
-     -
    * - ``datera_api_port`` = ``7717``
      - (DEPRECATED) (String) Datera API port.
    * - ``datera_api_version`` = ``2``
@@ -163,3 +161,44 @@ Configuration Options
      - (String) If set to 'Map' --> OpenStack project ID will be mapped implicitly to Datera tenant ID. If set to 'None' --> Datera tenant ID will not be used during volume provisioning. If set to anything else --> Datera tenant ID will be the provided value
    * - ``datera_disable_profiler`` = ``False``
      - (Bool) Set to True to disable profiling in the Datera driver
+
+
+=======
+Volume-Type ExtraSpecs
+=======
+
+.. list-table:: Description of Datera volume-type extra specs
+   :header-rows: 1
+   :class: config-ref-table
+
+   * - Configuration option = Default value
+     - Description
+   * - ``DF:replica_count`` = ``3``
+     - (Int) Specifies number of replicas for each volume. Can only increase, never decrease after volume creation
+   * - ``DF:round_robin`` = ``False``
+     - (Bool) True to round robin the provided portals for a target
+   * - ``DF:placement_mode`` = ``hybrid``
+     - (String) 'single_flash' for single-flash-replica placement.  'all_flash' for all-flash-replica placement. 'hybrid' for hybrid placement.
+   * - ``DF:acl_allow_all`` = ``False``
+     - (Bool) True to set acl 'allow_all' on volume created.  Cannot be changed on volume once set
+   * - ``DF:ip_pool`` = ``default``
+     - (String) Specifies IP pool to use for volume
+   * - ``DF:template`` = ``""``
+     - (String) Specifies Datera Template to use for volume provisioning
+   * - ``DF:default_storage_name`` = ``storage-1``
+     - (String) The name to use for storage instances created
+   * - ``DF:default_volume_name`` = ``volume-1``
+     - (String) The name to use for volumes created
+   * - ``DF:read_bandwidth_max`` = ``0``
+     - (Int) Max read bandwidth setting for volume QoS.  Use 0 for unlimited
+   * - ``DF:write_bandwidth_max`` = ``0``
+     - (Int) Max write bandwidth setting for volume QoS.  Use 0 for unlimited
+   * - ``DF:total_bandwidth_max`` = ``0``
+     - (Int) Total write bandwidth setting for volume QoS.  Use 0 for unlimited
+   * - ``DF:read_iops_max`` = ``0``
+     - (Int) Max read IOPS setting for volume QoS.  Use 0 for unlimited
+   * - ``DF:write_iops_max`` = ``0``
+     - (Int) Max write IOPS setting for volume QoS.  Use 0 for unlimited
+   * - ``DF:total_iops_max`` = ``0``
+     - (Int) Total write IOPS setting for volume QoS.  Use 0 for unlimited
+
