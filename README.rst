@@ -140,9 +140,9 @@ Configuration Options
    * - **[DEFAULT]**
      -
    * - ``datera_api_port`` = ``7717``
-     - (String) Datera API port.
+     - (DEPRECATED) (String) Datera API port.
    * - ``datera_api_version`` = ``2``
-     - (String) Datera API version.
+     - (DEPRECATED) (String) Datera API version.
    * - ``datera_num_replicas`` = ``1``
      - (String) Number of replicas to create of an inode.
    * - ``driver_client_cert`` = ``None``
@@ -154,6 +154,12 @@ Configuration Options
    * - ``datera_503_interval`` = ``5``
      - (Int) Interval between 503 retries
    * - ``datera_acl_allow_all`` = ``False``
-     - (Bool) True to set acl 'allow_all' on volumes created
+     - (DEPRECATED) (Bool) True to set acl 'allow_all' on volumes created
    * - ``datera_debug`` = ``False``
      - (Bool) True to set function arg and return logging
+   * - ``datera_debug_replica_count_override`` = ``False``
+     - (Bool) True to set replica_count to 1
+   * - ``datera_tenant_id`` = ``None``
+     - (String) If set to 'Map' --> OpenStack project ID will be mapped implicitly to Datera tenant ID. If set to 'None' --> Datera tenant ID will not be used during volume provisioning. If set to anything else --> Datera tenant ID will be the provided value
+   * - ``datera_disable_profiler`` = ``False``
+     - (Bool) Set to True to disable profiling in the Datera driver
