@@ -221,85 +221,6 @@ class DateraApi(object):
         # randomize portal chosen
         choice = 0
         policies = self._get_policies_for_resource(volume)
-        if policies["round_robin"]:
-            choice = random.randint(0, 1)
-        portal = si['access']['ips'][choice] + ':3260'
-        iqn = si['access']['iqn']
-        if multipath:
-            portals = [p + ':3260' for p in si['access']['ips']]
-            iqns = [iqn for _ in si['access']['ips']]
-            lunids = [self._get_lunid() for _ in si['access']['ips']]
-
-            result = {
-                'driver_volume_type': 'iscsi',
-                'data': {
-                    'target_discovered': False,
-                    'target_iqn': iqn,
-                    'target_iqns': iqns,
-                    'target_portal': portal,
-                    'target_portals': portals,
-                    'target_lun': self._get_lunid(),
-                    'target_luns': lunids,
-                    'volume_id': volume['id'],
-                    'discard': False}}
-        else:
-            result = {
-                'driver_volume_type': 'iscsi',
-                'data': {
-                    'target_discovered': False,
-                    'target_iqn': iqn,
-                    'target_portal': portal,
-                    'target_lun': self._get_lunid(),
-                    'volume_id': volume['id'],
-                    'discard': False}}
-
-        # url = datc.URL_TEMPLATES['ai_inst']().format(
-        #     datc._get_name(volume['id']))
-        # self._store_metadata(url, {}, "initialize_connection_2_1", tenant)
-        return result
-
-    # =================
-    # = Create Export =
-    # =================
-
-    def _create_export_2_1(self, context, volume, connector):
-        tenant = self._create_tenant(volume)
-        url = datc.URL_TEMPLATES['ai_inst']().format(
-            datc._get_name(volume['id']))
-        data = {
-            'admin_state': 'offline',
-            'force': True
-        }
-        self._issue_api_request(
-            url, method='put', body=data, api_version='2.1', tenant=tenant)
-        policies = self._get_policies_for_resource(volume)
-        store_name, _ = self._scrape_template(policies)
-        if connector and connector.get('ip'):
-            # Case where volume_type has non default IP Pool info
-            if policies['ip_pool'] != 'default':
-                initiator_ip_pool_path = self._issue_api_request(
-                    "access_network_ip_pools/{}".format(
-                        policies['ip_pool']),
-                    api_version='2.1',
-                    tenant=tenant)['path']
-            # Fallback to trying reasonable IP based guess
-            else:
-                initiator_ip_pool_path = self._get_ip_pool_for_string_ip_2_1(
-                    connector['ip'])
-
-            ip_pool_url = datc.URL_TEMPLATES['si_inst'](
-                store_name).format(datc._get_name(volume['id']))
-            ip_pool_data = {'ip_pool': {'path': initiator_ip_pool_path}}
-            self._issue_api_request(ip_pool_url,
-                                    method="put",
-                                    body=ip_pool_data,
-                                    api_version='2.1',
-                                    tenant=tenant)
-        url = datc.URL_TEMPLATES['ai_inst']().format(
-            datc._get_name(volume['id']))
-        data = {
-            'admin_state': 'online'
-        }
         self._issue_api_request(
             url, method='put', body=data, api_version='2.1', tenant=tenant)
         # Check if we've already setup everything for this volume
@@ -368,6 +289,85 @@ class DateraApi(object):
         # create_export
         # # call
         # self._store_metadata(url, metadata, "create_export_2_1", tenant)
+        if policies["round_robin"]:
+            choice = random.randint(0, 1)
+        portal = si['access']['ips'][choice] + ':3260'
+        iqn = si['access']['iqn']
+        if multipath:
+            portals = [p + ':3260' for p in si['access']['ips']]
+            iqns = [iqn for _ in si['access']['ips']]
+            lunids = [self._get_lunid() for _ in si['access']['ips']]
+
+            result = {
+                'driver_volume_type': 'iscsi',
+                'data': {
+                    'target_discovered': False,
+                    'target_iqn': iqn,
+                    'target_iqns': iqns,
+                    'target_portal': portal,
+                    'target_portals': portals,
+                    'target_lun': self._get_lunid(),
+                    'target_luns': lunids,
+                    'volume_id': volume['id'],
+                    'discard': False}}
+        else:
+            result = {
+                'driver_volume_type': 'iscsi',
+                'data': {
+                    'target_discovered': False,
+                    'target_iqn': iqn,
+                    'target_portal': portal,
+                    'target_lun': self._get_lunid(),
+                    'volume_id': volume['id'],
+                    'discard': False}}
+
+        # url = datc.URL_TEMPLATES['ai_inst']().format(
+        #     datc._get_name(volume['id']))
+        # self._store_metadata(url, {}, "initialize_connection_2_1", tenant)
+        return result
+
+    # =================
+    # = Create Export =
+    # =================
+
+    def _create_export_2_1(self, context, volume, connector=None):
+        tenant = self._create_tenant(volume)
+        url = datc.URL_TEMPLATES['ai_inst']().format(
+            datc._get_name(volume['id']))
+        data = {
+            'admin_state': 'offline',
+            'force': True
+        }
+        self._issue_api_request(
+            url, method='put', body=data, api_version='2.1', tenant=tenant)
+        policies = self._get_policies_for_resource(volume)
+        store_name, _ = self._scrape_template(policies)
+        if connector and connector.get('ip'):
+            # Case where volume_type has non default IP Pool info
+            if policies['ip_pool'] != 'default':
+                initiator_ip_pool_path = self._issue_api_request(
+                    "access_network_ip_pools/{}".format(
+                        policies['ip_pool']),
+                    api_version='2.1',
+                    tenant=tenant)['path']
+            # Fallback to trying reasonable IP based guess
+            else:
+                initiator_ip_pool_path = self._get_ip_pool_for_string_ip_2_1(
+                    connector['ip'])
+
+            ip_pool_url = datc.URL_TEMPLATES['si_inst'](
+                store_name).format(datc._get_name(volume['id']))
+            ip_pool_data = {'ip_pool': {'path': initiator_ip_pool_path}}
+            self._issue_api_request(ip_pool_url,
+                                    method="put",
+                                    body=ip_pool_data,
+                                    api_version='2.1',
+                                    tenant=tenant)
+        url = datc.URL_TEMPLATES['ai_inst']().format(
+            datc._get_name(volume['id']))
+        data = {
+            'admin_state': 'online'
+        }
 
     # =================
     # = Detach Volume =

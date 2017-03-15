@@ -19,11 +19,9 @@ import uuid
 from eventlet.green import threading
 from oslo.config import cfg
 from cinder.openstack.common import log as logging
-import six
 
 from cinder import exception
 from cinder.i18n import _
-from cinder import utils
 from cinder.volume.drivers.san import san
 
 import cinder.volume.drivers.datera.datera_api2 as api2
@@ -187,7 +185,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
     # =================
 
     @datc._api_lookup
-    def create_export(self, context, volume, connector):
+    def create_export(self, context, volume, connector=None):
         pass
 
     # =================

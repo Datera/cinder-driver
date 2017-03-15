@@ -261,6 +261,8 @@ def _get_policies_for_resource(driver, resource):
 
     # Set defaults:
     policies = {
+        'acl_allow_all': False,
+        'round_robin': False,
         'replica_count': 3,
         'placement_mode': 'hybrid',
         'template': '',
