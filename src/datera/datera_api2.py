@@ -190,7 +190,58 @@ class DateraApi(object):
         storage_instances = app_inst["storage_instances"]
         si_names = list(storage_instances.keys())
 
+        portal = storage_instances[si_names[0]]['access']['ips'][0] + ':3260'
+        iqn = storage_instances[si_names[0]]['access']['iqn']
+        if multipath:
+            portals = [p + ':3260' for p in
+                       storage_instances[si_names[0]]['access']['ips']]
+            iqns = [iqn for _ in
+                    storage_instances[si_names[0]]['access']['ips']]
+            lunids = [self._get_lunid() for _ in
+                      storage_instances[si_names[0]]['access']['ips']]
+
+            return {
+                'driver_volume_type': 'iscsi',
+                'data': {
+                    'target_discovered': False,
+                    'target_iqn': iqn,
+                    'target_iqns': iqns,
+                    'target_portal': portal,
+                    'target_portals': portals,
+                    'target_lun': self._get_lunid(),
+                    'target_luns': lunids,
+                    'volume_id': volume['id'],
+                    'discard': False}}
+        else:
+            return {
+                'driver_volume_type': 'iscsi',
+                'data': {
+                    'target_discovered': False,
+                    'target_iqn': iqn,
+                    'target_portal': portal,
+                    'target_lun': self._get_lunid(),
+                    'volume_id': volume['id'],
+                    'discard': False}}
+
+    # =================
+    # = Create Export =
+    # =================
+
+    def _create_export_2(self, context, volume, connector=None):
+        # Online volume in case it hasn't been already
+        url = datc.URL_TEMPLATES['ai_inst']().format(
+            datc._get_name(volume['id']))
+        data = {
+            'admin_state': 'online'
+        }
+        self._issue_api_request(url, method='put', body=data, api_version='2')
+        # Check if we've already setup everything for this volume
+        url = (datc.URL_TEMPLATES['si']().format(datc._get_name(volume['id'])))
+        storage_instances = self._issue_api_request(url, api_version='2')
+        # Handle adding initiator to product if necessary
+        # Then add initiator to ACL
         policies = self._get_policies_for_resource(volume)
+
         store_name, _ = self._scrape_template(policies)
 
         if (connector and
@@ -272,52 +323,6 @@ class DateraApi(object):
 
         # Check to ensure we're ready for go-time
         self._si_poll(volume, policies)
-
-        portal = storage_instances[si_names[0]]['access']['ips'][0] + ':3260'
-        iqn = storage_instances[si_names[0]]['access']['iqn']
-        if multipath:
-            portals = [p + ':3260' for p in
-                       storage_instances[si_names[0]]['access']['ips']]
-            iqns = [iqn for x in
-                    storage_instances[si_names[0]]['access']['ips']]
-            lunids = [self._get_lunid() for x in
-                      storage_instances[si_names[0]]['access']['ips']]
-
-            return {
-                'driver_volume_type': 'iscsi',
-                'data': {
-                    'target_discovered': False,
-                    'target_iqn': iqn,
-                    'target_iqns': iqns,
-                    'target_portal': portal,
-                    'target_portals': portals,
-                    'target_lun': self._get_lunid(),
-                    'target_luns': lunids,
-                    'volume_id': volume['id'],
-                    'discard': False}}
-        else:
-            return {
-                'driver_volume_type': 'iscsi',
-                'data': {
-                    'target_discovered': False,
-                    'target_iqn': iqn,
-                    'target_portal': portal,
-                    'target_lun': self._get_lunid(),
-                    'volume_id': volume['id'],
-                    'discard': False}}
-
-    # =================
-    # = Create Export =
-    # =================
-
-    def _create_export_2(self, context, volume, connector=None):
-        # Online volume in case it hasn't been already
-        url = datc.URL_TEMPLATES['ai_inst']().format(
-            datc._get_name(volume['id']))
-        data = {
-            'admin_state': 'online'
-        }
-        self._issue_api_request(url, method='put', body=data, api_version='2')
 
     # =================
     # = Detach Volume =
