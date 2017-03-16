@@ -37,6 +37,18 @@ Datera Cinder Repository
        ****IMPORTANT****: cinder.conf must be changed so `volume_driver = 
        cinder.volume.drivers.datera.datera_iscsi.DateraDriver`
    * - Newton
+     - newton-v2.3.2
+     - 2.3.2
+     - Scalability bugfixes, Volume Placement, ACL multi-attach bugfix
+     - 1.0, 1.1, 2.1
+     - Driver now consists of a folder "datera/" with the following files:
+       * datera_iscsi.py
+       * datera_api2.py
+       * datera_api21.py
+       * datera_common.py
+       ****IMPORTANT****: cinder.conf must be changed so `volume_driver = 
+       cinder.volume.drivers.datera.datera_iscsi.DateraDriver`
+   * - Newton
      - newton-v2.3.0
      - 2.3.0
      - Templates, Tenants, 2.1 API Support, Code Restructure
