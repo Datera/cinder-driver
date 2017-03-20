@@ -267,7 +267,13 @@ def _get_policies_for_resource(driver, resource):
         'placement_mode': 'hybrid',
         'template': '',
         'default_storage_name': 'storage-1',
-        'default_volume_name': 'volume-1'}
+        'default_volume_name': 'volume-1',
+        'write_bandwidth_max': 0,
+        'read_bandwidth_max': 0,
+        'total_bandwidth_max': 0,
+        'write_iops_max': 0,
+        'read_iops_max': 0,
+        'total_iops_max': 0}
 
     if volume_type:
         # Populate updated value
