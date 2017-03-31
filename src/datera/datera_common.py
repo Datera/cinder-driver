@@ -246,12 +246,16 @@ def _get_volume_type_obj(driver, resource):
 
 
 def _get_policies_for_resource(driver, resource):
+    volume_type = driver._get_volume_type_obj(resource)
+    return driver._get_policies_for_volume_type(volume_type)
+
+
+def _get_policies_for_volume_type(driver, volume_type):
     """Get extra_specs and qos_specs of a volume_type.
 
     This fetches the scoped keys from the volume type. Anything set from
      qos_specs will override key/values set from extra_specs.
     """
-    volume_type = driver._get_volume_type_obj(resource)
     # Handle case of volume with no type.  We still want the
     # specified defaults from above
     if volume_type:
@@ -474,6 +478,7 @@ def register_driver(driver):
     for func in [_get_supported_api_versions,
                  _get_volume_type_obj,
                  _get_policies_for_resource,
+                 _get_policies_for_volume_type,
                  _request,
                  _raise_response,
                  _handle_bad_status,
