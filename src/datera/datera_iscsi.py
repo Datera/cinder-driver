@@ -122,6 +122,10 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
         self.do_profile = not self.configuration.datera_disable_profiler
         self.thread_local = threading.local()
 
+        backend_name = self.configuration.safe_get(
+            'volume_backend_name')
+        self.backend_name = backend_name or 'Datera'
+
         datc.register_driver(self)
 
     def do_setup(self, context):
@@ -228,6 +232,24 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
 
     @datc._api_lookup
     def create_volume_from_snapshot(self, volume, snapshot):
+        pass
+
+    # ==========
+    # = Retype =
+    # ==========
+
+    @datc._api_lookup
+    def retype(self, ctxt, volume, new_type, diff, host):
+        """Convert the volume to be of the new type.
+        Returns a boolean indicating whether the retype occurred.
+        :param ctxt: Context
+        :param volume: A dictionary describing the volume to migrate
+        :param new_type: A dictionary describing the volume type to convert to
+        :param diff: A dictionary with the difference between the two types
+        :param host: A dictionary describing the host to migrate to, where
+                     host['host'] is its name, and host['capabilities'] is a
+                     dictionary of its reported capabilities (Not Used).
+        """
         pass
 
     # ==========

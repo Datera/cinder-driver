@@ -566,6 +566,50 @@ class DateraApi(object):
             tenant=tenant)
 
     # ==========
+    # = Retype =
+    # ==========
+
+    def _retype_2_1(self, ctxt, volume, new_type, diff, host):
+        LOG.debug("Retype called\n"
+                  "Volume: %s\n"
+                  "NewType: %s\n"
+                  "Diff: %s\n"
+                  "Host: %s\n" % (volume, new_type, diff, host))
+        # We'll take the fast route only if the types share the same backend
+        # And that backend matches this driver
+        old_pol = self._get_policies_for_resource(volume)
+        new_pol = self._get_policies_for_volume_type(new_type)
+        if (host['capabilities']['vendor_name'].lower() ==
+                self.backend_name.lower()):
+            LOG.debug("Starting fast volume retype")
+
+            if old_pol.get('template') or new_pol.get('template'):
+                LOG.warning(
+                    "Fast retyping between template-backed volume-types "
+                    "unsupported.  Type1: %s, Type2: %s",
+                    volume['volume_type_id'], new_type)
+
+            tenant = self._create_tenant(volume)
+            self._update_qos_2_1(volume, new_pol, tenant)
+            vol_params = (
+                {
+                    # 'name': new_pol['default_volume_name'],
+                    'placement_mode': new_pol['placement_mode'],
+                    'replica_count': new_pol['replica_count'],
+                })
+            url = datc.URL_TEMPLATES['vol_inst'](
+                old_pol['default_storage_name'],
+                old_pol['default_volume_name']).format(
+                    datc._get_name(volume['id']))
+            self._issue_api_request(url, method='put', body=vol_params,
+                                    api_version='2.1', tenant=tenant)
+            return True
+
+        else:
+            LOG.debug("Couldn't fast-retype volume between specified types")
+            return False
+
+    # ==========
     # = Manage =
     # ==========
 
@@ -872,10 +916,8 @@ class DateraApi(object):
                     LOG.error(_LE(
                         'Failed to get updated stats from Datera Cluster.'))
 
-                backend_name = self.configuration.safe_get(
-                    'volume_backend_name')
                 stats = {
-                    'volume_backend_name': backend_name or 'Datera',
+                    'volume_backend_name': self.backend_name,
                     'vendor_name': 'Datera',
                     'driver_version': self.VERSION,
                     'storage_protocol': 'iSCSI',
@@ -911,6 +953,8 @@ class DateraApi(object):
             # Filter all 0 values from being passed
             fpolicies = dict(filter(lambda _v: _v[1] > 0, fpolicies.items()))
             if fpolicies:
+                self._issue_api_request(url, 'delete', api_version='2.1',
+                                        tenant=tenant)
                 self._issue_api_request(url, 'post', body=fpolicies,
                                         api_version='2.1', tenant=tenant)
 
