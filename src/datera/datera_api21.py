@@ -590,7 +590,7 @@ class DateraApi(object):
                     volume['volume_type_id'], new_type)
 
             tenant = self._create_tenant(volume)
-            self._update_qos_2_1(volume, new_pol, tenant)
+            self._update_qos_2_1(volume, new_pol, tenant, delete_old=True)
             vol_params = (
                 {
                     # 'name': new_pol['default_volume_name'],
@@ -939,7 +939,7 @@ class DateraApi(object):
     # = QoS =
     # =======
 
-    def _update_qos_2_1(self, resource, policies, tenant):
+    def _update_qos_2_1(self, resource, policies, tenant, delete_old=False):
         url = datc.URL_TEMPLATES['vol_inst'](
             policies['default_storage_name'],
             policies['default_volume_name']) + '/performance_policy'
@@ -953,8 +953,11 @@ class DateraApi(object):
             # Filter all 0 values from being passed
             fpolicies = dict(filter(lambda _v: _v[1] > 0, fpolicies.items()))
             if fpolicies:
-                self._issue_api_request(url, 'delete', api_version='2.1',
-                                        tenant=tenant)
+                # Delete QoS policies if they exist to make room for the
+                # new QoS policies
+                if delete_old:
+                    self._issue_api_request(url, 'delete', api_version='2.1',
+                                            tenant=tenant)
                 self._issue_api_request(url, 'post', body=fpolicies,
                                         api_version='2.1', tenant=tenant)
 
