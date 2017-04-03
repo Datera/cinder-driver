@@ -79,6 +79,18 @@ Datera Cinder Repository
      - 1.0, 1.1
      - https://raw.githubusercontent.com/Datera/cinder-driver/newton-v2.1/src/datera.py
    * - Mitaka
+     - mitaka-v2.4.0
+     - 2.4.0
+     - Retype Support
+     - 1.0, 1.1, 2.1, 2.2
+     - Driver now consists of a folder "datera/" with the following files:
+       * datera_iscsi.py
+       * datera_api2.py
+       * datera_api21.py
+       * datera_common.py
+       ****IMPORTANT****: cinder.conf must be changed so `volume_driver = 
+       cinder.volume.drivers.datera.datera_iscsi.DateraDriver`
+   * - Mitaka
      - mitaka-v2.3.2
      - 2.3.2
      - Scalability bugfixes, Volume Placement, ACL multi-attach bugfix
