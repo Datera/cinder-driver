@@ -91,7 +91,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
         2.3.1 - Scalability bugfixes
         2.3.2 - Volume Placement, ACL multi-attach bugfix
     """
-    VERSION = '2.3.1'
+    VERSION = '2.3.2'
 
     CI_WIKI_NAME = "datera-ci"
 
