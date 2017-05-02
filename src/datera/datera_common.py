@@ -171,7 +171,7 @@ def _api_lookup(func):
                     call_id = uuid.uuid4()
                     LOG.debug("Profiling method: %s, id %s", name, call_id)
                     t1 = time.time()
-                    obj.thread_local = call_id
+                    obj.thread_local.trace_id = call_id
                 result = getattr(obj, name)(*args[1:], **kwargs)
                 if obj.do_profile:
                     t2 = time.time()
@@ -430,7 +430,7 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
                    "Datera Request Method: %s\n"
                    "Datera Request Payload: %s\n"
                    "Datera Request Headers: %s\n"),
-                  driver.thread_local,
+                  driver.thread_local.trace_id,
                   request_id,
                   api_version,
                   resource_url,
@@ -456,7 +456,7 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
                    "Datera Response URL: %s\n"
                    "Datera Response Payload: %s\n"
                    "Datera Response Object: %s\n"),
-                  driver.thread_local,
+                  driver.thread_local.trace_id,
                   request_id,
                   timedelta,
                   response.url,
