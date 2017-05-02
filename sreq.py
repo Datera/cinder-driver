@@ -41,8 +41,11 @@ TUP_VALS = {"REQTIME":     0,
             "RESPAYLOAD": 12}
 
 
-def filter_func(found, loc, val):
-    return filter(lambda x: len(x) >= loc and x[loc] == val, found)
+def filter_func(found, loc, val, check_contents):
+    if check_contents:
+        return filter(lambda x: len(x) >= loc and val in x[loc], found)
+    else:
+        return filter(lambda x: len(x) >= loc and x[loc] == val, found)
 
 
 def main(args):
@@ -74,7 +77,8 @@ def main(args):
     if args.filter:
         k, v = args.filter.split("=")
         k = k.strip().upper()
-        found = filter_func(found.values(), TUP_VALS[k.upper()], v)
+        found = filter_func(found.values(), TUP_VALS[k.upper()], v,
+                            args.check_contents)
 
     orphans = []
     normies = []
@@ -148,6 +152,11 @@ if __name__ == "__main__":
                         help="Print available sorting/filtering enums")
     parser.add_argument("-f", "--filter", default=None,
                         help="Filter by this enum value: Eg: REQID=XXXXXXX")
+    parser.add_argument("-c", "--check-contents", action='store_true',
+                        help="Check enum contents using value in '--filter'. "
+                             "Eg. Contents=={'uuid': 'abcd-xxx-xxx'}, a '--fil"
+                             "ter' value of 'abcd' would match with this flag,"
+                             " may be MUCH slower")
     parser.add_argument("-s", "--sort", default="RESDELTA",
                         help="Sort by this enum value: Eg: RESDELTA")
     parser.add_argument("-p", "--pretty", action="store_true",
