@@ -1,5 +1,38 @@
 #!/usr/bin/env python
+"""
+SREQ -- The Request Sorter
 
+Usage:
+
+    Basic
+    $ ./sreq.py /your/cinder-volume/log/location.log
+
+    Pretty print the results
+    $ ./sreq.py /your/cinder-volume/log/location.log --pretty
+
+    Display available enum values
+    $ ./sreq.py /your/cinder-volume/log/location.log --print-enums
+
+    Sort the results by an enum value
+    $ ./sreq.py /your/cinder-volume/log/location.log --pretty --sort RESDELTA
+
+    Filter by an exact enum value
+    $ ./sreq.py /your/cinder-volume/log/location.log \
+        --pretty \
+        --filter REQTRACE=7913f69f-3d56-49e0-a347-e095b982fb6a
+
+    Filter by enum contents
+
+    $ ./sreq.py /your/cinder-volume/log/location.log \
+        --pretty \
+        --filter REQPAYLOAD=OS-7913f69f-3d56-49e0-a347-e095b982fb6a
+        --check-contents
+
+    Show only requests without replies
+    $ ./sreq.py /your/cinder-volume/log/location.log \
+        --pretty \
+        --orphans
+"""
 from __future__ import unicode_literals, division, print_function
 
 import argparse
@@ -10,20 +43,20 @@ try:
     import text_histogram
 except ImportError:
     text_histogram = None
-DREQ = re.compile("""^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*?\r
-Datera Trace ID: (?P<trace>\w+-\w+-\w+-\w+-\w+)\r
-Datera Request ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)\r
-Datera Request URL: (?P<url>.*?)\r
-Datera Request Method: (?P<method>.*?)\r
-Datera Request Payload: (?P<payload>.*?)\r
+DREQ = re.compile("""^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*?
+Datera Trace ID: (?P<trace>\w+-\w+-\w+-\w+-\w+)
+Datera Request ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
+Datera Request URL: (?P<url>.*?)
+Datera Request Method: (?P<method>.*?)
+Datera Request Payload: (?P<payload>.*?)
 Datera Request Headers: (?P<headers>.*?\})""", re.MULTILINE | re.DOTALL)
 
-DRES = re.compile("""^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*?\r
-Datera Trace ID: (?P<trace>\w+-\w+-\w+-\w+-\w+)\r
-Datera Response ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)\r
-Datera Response TimeDelta: (?P<delta>\d+\.\d\d\d)s\r
-Datera Response URL: (?P<url>.*?)\r
-Datera Response Payload: (?P<payload>.*?)\r
+DRES = re.compile("""^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*?
+Datera Trace ID: (?P<trace>\w+-\w+-\w+-\w+-\w+)
+Datera Response ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
+Datera Response TimeDelta: (?P<delta>\d+\.\d\d\d)s
+Datera Response URL: (?P<url>.*?)
+Datera Response Payload: (?P<payload>.*?)
 Datera Response Object""", re.MULTILINE | re.DOTALL)
 
 TUP_VALS = {"REQTIME":     0,
@@ -40,18 +73,50 @@ TUP_VALS = {"REQTIME":     0,
             "RESURL":     11,
             "RESPAYLOAD": 12}
 
+TUP_DESCRIPTIONS = {"REQTIME":     "Request Timestamp",
+                    "REQTRACE":    "Request Trace ID",
+                    "REQID":       "Request ID",
+                    "REQURL":      "Request URL",
+                    "REQMETHOD":   "Request Method",
+                    "REQPAYLOAD":  "Request Payload",
+                    "REQHEADERS":  "Request Headers",
+                    "RESTIME":     "Response Timestamp",
+                    "RESTRACE":    "Response Trace ID",
+                    "RESID":       "Response ID",
+                    "RESDELTA":    "Response Time Delta",
+                    "RESURL":      "Response URL",
+                    "RESPAYLOAD":  "Response Payload"}
 
-def filter_func(found, loc, val, check_contents):
-    if check_contents:
-        return filter(lambda x: len(x) >= loc and val in x[loc], found)
+OPERATORS = {"=": "X equals Y",
+             ">": "X greater than Y",
+             "<": "X less than Y",
+             ">=": "X greather than or equals Y",
+             "<=": "X less than or equals Y",
+             "##": "X contains Y"}
+
+OPERATORS_FUNC = {"=": lambda x, y: x == y,
+                  ">": lambda x, y: float(x) > float(y),
+                  "<": lambda x, y: float(x) < float(y),
+                  ">=": lambda x, y: float(x) >= float(y),
+                  "<=": lambda x, y: float(x) <= float(y),
+                  "##": lambda x, y: y in x}
+
+
+def filter_func(found, loc, val, operator):
+    if operator:
+        return filter(lambda x: len(x) >= loc and operator(x[loc], val), found)
     else:
-        return filter(lambda x: len(x) >= loc and x[loc] == val, found)
+        return found
 
 
 def main(args):
     if args.print_enums:
         for elem in sorted(TUP_VALS.keys()):
-            print(str(elem))
+            print(str("{:>10}: {}".format(elem, TUP_DESCRIPTIONS[elem])))
+        sys.exit(0)
+    if args.print_operators:
+        for k, v in sorted(OPERATORS.items()):
+            print(str("{:>10}: {}".format(k, v)))
         sys.exit(0)
     file = args.logfile
     with open(file) as f:
@@ -74,11 +139,22 @@ def main(args):
                                           match.group("url"),
                                           match.group("payload")])
 
-    if args.filter:
-        k, v = args.filter.split("=")
+    found = found.values()
+    for f in args.filter:
+        k, v, operator = None, None, None
+        for operator in OPERATORS.keys():
+            sp = f.split(operator, 1)
+            if len(sp) == 2:
+                k, v = sp
+                break
+        if not k:
+            raise ValueError("No valid operator detected in {}".format(
+                args.filter))
         k = k.strip().upper()
-        found = filter_func(found.values(), TUP_VALS[k.upper()], v,
-                            args.check_contents)
+        found = filter_func(found,
+                            TUP_VALS[k.upper()],
+                            v,
+                            OPERATORS_FUNC[operator])
 
     orphans = []
     normies = []
@@ -108,14 +184,15 @@ def main(args):
                 except IndexError:
                     pass
             print()
-        else:
+        elif not args.quiet:
             print()
             print(*entry)
             print()
 
-    lfound = [float(elem[TUP_VALS["RESDELTA"]]) for elem in result]
+    lfound = None
 
     if args.stats:
+        lfound = [float(elem[TUP_VALS["RESDELTA"]]) for elem in result]
         print("\n=========================\n")
         print("Count:", len(lfound))
 
@@ -137,11 +214,11 @@ def main(args):
         print()
         print()
 
-    if text_histogram:
-        hg = text_histogram.histogram
-        hg(lfound, buckets=5, calc_msvd=False)
-        print()
-        print()
+        if text_histogram:
+            hg = text_histogram.histogram
+            hg(lfound, buckets=5, calc_msvd=False)
+            print()
+            print()
     sys.exit(0)
 
 
@@ -150,13 +227,13 @@ if __name__ == "__main__":
     parser.add_argument("logfile")
     parser.add_argument("--print-enums", action="store_true",
                         help="Print available sorting/filtering enums")
-    parser.add_argument("-f", "--filter", default=None,
-                        help="Filter by this enum value: Eg: REQID=XXXXXXX")
-    parser.add_argument("-c", "--check-contents", action='store_true',
-                        help="Check enum contents using value in '--filter'. "
-                             "Eg. Contents=={'uuid': 'abcd-xxx-xxx'}, a '--fil"
-                             "ter' value of 'abcd' would match with this flag,"
-                             " may be MUCH slower")
+    parser.add_argument("--print-operators", action="store_true",
+                        help="Print available filtering operators")
+    parser.add_argument("-q", "--quiet", action='store_true',
+                        help="Don't print anything except explicit options")
+    parser.add_argument("-f", "--filter", default=None, action='append',
+                        help="Filter by this enum value and operator: "
+                        "'REQPAYLOAD##someid'.  MAKE SURE TO QUOTE ARGUMENT")
     parser.add_argument("-s", "--sort", default="RESDELTA",
                         help="Sort by this enum value: Eg: RESDELTA")
     parser.add_argument("-p", "--pretty", action="store_true",
