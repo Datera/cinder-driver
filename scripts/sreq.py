@@ -36,6 +36,7 @@ Usage:
 from __future__ import unicode_literals, division, print_function
 
 import argparse
+import json
 import sys
 import re
 
@@ -49,15 +50,24 @@ Datera Request ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
 Datera Request URL: (?P<url>.*?)
 Datera Request Method: (?P<method>.*?)
 Datera Request Payload: (?P<payload>.*?)
-Datera Request Headers: (?P<headers>.*?\})""", re.MULTILINE | re.DOTALL)
+Datera Request Headers: (?P<headers>.*?\})""")
 
 DRES = re.compile("""^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*?
 Datera Trace ID: (?P<trace>\w+-\w+-\w+-\w+-\w+)
 Datera Response ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
-Datera Response TimeDelta: (?P<delta>\d+\.\d\d\d)s
+Datera Response TimeDelta: (?P<delta>\d+\.\d\d?\d?)s
 Datera Response URL: (?P<url>.*?)
 Datera Response Payload: (?P<payload>.*?)
-Datera Response Object""", re.MULTILINE | re.DOTALL)
+Datera Response Object.*""")
+
+ATTACH = re.compile("^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*"
+                    "Attaching volume (?P<vol>(\w+-){4}\w+) to instance "
+                    "(?P<vm>(\w+-){4}\w+) at mountpoint (?P<device>\S+) "
+                    "on host (?P<host>\S+)\.")
+
+DETACH = re.compile("^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*"
+                    "Detaching volume (?P<vol>(\w+-){4}\w+) from instance "
+                    "(?P<vm>(\w+-){4}\w+)")
 
 TUP_VALS = {"REQTIME":     0,
             "REQTRACE":    1,
@@ -109,6 +119,28 @@ def filter_func(found, loc, val, operator):
         return found
 
 
+def find_attach_detach(lines):
+    attach_detach = []
+    for line in lines:
+        amatch = ATTACH.match(line)
+        if amatch:
+            attach_detach.append((
+                amatch.group("time"),
+                'attach',
+                amatch.group("vol"),
+                amatch.group("vm"),
+                amatch.group("device"),
+                amatch.group("host")))
+        dmatch = DETACH.match(line)
+        if dmatch:
+            attach_detach.append((
+                dmatch.group("time"),
+                'detach',
+                dmatch.group("vol"),
+                dmatch.group("vm")))
+    return attach_detach
+
+
 def main(args):
     if args.print_enums:
         for elem in sorted(TUP_VALS.keys()):
@@ -119,25 +151,44 @@ def main(args):
             print(str("{:>10}: {}".format(k, v)))
         sys.exit(0)
     file = args.logfile
+    data = None
     with open(file) as f:
-        data = f.read()
-        req_matches = DREQ.finditer(data)
-        res_matches = DRES.finditer(data)
-    found = {match.group("rid"): [match.group("time"),
-                                  match.group("trace"),
-                                  match.group("rid"),
-                                  match.group("url"),
-                                  match.group("method"),
-                                  match.group("payload"),
-                                  match.group("headers")]
-             for match in req_matches}
-    for match in res_matches:
-        found[match.group("rid")].extend([match.group("time"),
-                                          match.group("trace"),
-                                          match.group("rid"),
-                                          match.group("delta"),
-                                          match.group("url"),
-                                          match.group("payload")])
+        data = f.readlines()
+
+    if args.attach_detach:
+        ad = find_attach_detach(data)
+        for elem in ad:
+            print(elem)
+        sys.exit(0)
+
+    found = {}
+
+    log_blocks = []
+    for index, line in enumerate(data):
+        if line.startswith("Datera Trace"):
+            log_blocks.append(
+                "".join(data[index - 1: index + 6]).replace("\r", ""))
+
+    for logb in log_blocks:
+        req_match = DREQ.match(logb)
+        if req_match:
+            found[req_match.group("rid")] = [req_match.group("time"),
+                                             req_match.group("trace"),
+                                             req_match.group("rid"),
+                                             req_match.group("url"),
+                                             req_match.group("method"),
+                                             req_match.group("payload"),
+                                             req_match.group("headers")]
+        else:
+            res_match = DRES.match(logb)
+            if not res_match:
+                raise ValueError("No match\n{}".format(logb))
+            found[res_match.group("rid")].extend([res_match.group("time"),
+                                                  res_match.group("trace"),
+                                                  res_match.group("rid"),
+                                                  res_match.group("delta"),
+                                                  res_match.group("url"),
+                                                  res_match.group("payload")])
 
     found = found.values()
     for f in args.filter:
@@ -175,8 +226,17 @@ def main(args):
         except IndexError:
             return x[0]
 
-    for entry in sorted(result, key=_helper):
-        if args.pretty:
+    limit = args.limit if args.limit else len(result)
+    jsond = []
+    for entry in reversed(sorted(result, key=_helper)):
+        if limit == 0:
+            break
+        elif args.json:
+            d = {}
+            for enum, val in TUP_VALS.items():
+                d[enum] = entry[val]
+            jsond.append(d)
+        elif args.pretty:
             print()
             for enum, val in sorted(TUP_VALS.items(), key=lambda x: x[1]):
                 try:
@@ -188,11 +248,16 @@ def main(args):
             print()
             print(*entry)
             print()
+        limit -= 1
 
+    if jsond:
+        print(json.dumps(jsond))
     lfound = None
 
     if args.stats:
         lfound = [float(elem[TUP_VALS["RESDELTA"]]) for elem in result]
+        if args.limit:
+            lfound = lfound[:args.limit]
         print("\n=========================\n")
         print("Count:", len(lfound))
 
@@ -224,23 +289,29 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("logfile")
+    parser.add_argument("logfile", nargs="?")
     parser.add_argument("--print-enums", action="store_true",
                         help="Print available sorting/filtering enums")
     parser.add_argument("--print-operators", action="store_true",
                         help="Print available filtering operators")
     parser.add_argument("-q", "--quiet", action='store_true',
                         help="Don't print anything except explicit options")
-    parser.add_argument("-f", "--filter", default=None, action='append',
+    parser.add_argument("-f", "--filter", default=[], action='append',
                         help="Filter by this enum value and operator: "
                         "'REQPAYLOAD##someid'.  MAKE SURE TO QUOTE ARGUMENT")
     parser.add_argument("-s", "--sort", default="RESDELTA",
                         help="Sort by this enum value: Eg: RESDELTA")
+    parser.add_argument("-l", "--limit", default=None, type=int,
+                        help="Limit results to provided value")
     parser.add_argument("-p", "--pretty", action="store_true",
                         help="Pretty print results")
+    parser.add_argument("-j", "--json", action="store_true",
+                        help="Print results in JSON")
     parser.add_argument("-o", "--orphans", action="store_true",
                         help="Display only orphan requests, ie. requests that "
                              "did not recieve any response")
+    parser.add_argument("-a", "--attach-detach", action="store_true",
+                        help="Show attaches/detaches")
     parser.add_argument("--stats", action="store_true")
     args = parser.parse_args()
     sys.exit(main(args))
