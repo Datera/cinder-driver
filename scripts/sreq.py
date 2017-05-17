@@ -1,38 +1,4 @@
 #!/usr/bin/env python
-"""
-SREQ -- The Request Sorter
-
-Usage:
-
-    Basic
-    $ ./sreq.py /your/cinder-volume/log/location.log
-
-    Pretty print the results
-    $ ./sreq.py /your/cinder-volume/log/location.log --pretty
-
-    Display available enum values
-    $ ./sreq.py /your/cinder-volume/log/location.log --print-enums
-
-    Sort the results by an enum value
-    $ ./sreq.py /your/cinder-volume/log/location.log --pretty --sort RESDELTA
-
-    Filter by an exact enum value
-    $ ./sreq.py /your/cinder-volume/log/location.log \
-        --pretty \
-        --filter REQTRACE=7913f69f-3d56-49e0-a347-e095b982fb6a
-
-    Filter by enum contents
-
-    $ ./sreq.py /your/cinder-volume/log/location.log \
-        --pretty \
-        --filter REQPAYLOAD=OS-7913f69f-3d56-49e0-a347-e095b982fb6a
-        --check-contents
-
-    Show only requests without replies
-    $ ./sreq.py /your/cinder-volume/log/location.log \
-        --pretty \
-        --orphans
-"""
 from __future__ import unicode_literals, division, print_function
 
 import argparse
@@ -44,6 +10,51 @@ try:
     import text_histogram
 except ImportError:
     text_histogram = None
+
+USAGE = """
+SREQ -- The Request Sorter
+
+Usage:
+
+    Basic
+    $ ./sreq.py /your/cinder-volume/log/location.log
+
+    Multiple Log Files
+    $ ./sreq.py /your/cinder-volume/log/location.log \
+/your/cinder-volume/log/location2.log
+
+    Pretty print the results
+    $ ./sreq.py /your/cinder-volume/log/location.log --pretty
+
+    Output JSON
+    $ ./sreq.py /your/cinder-volume/log/location.log --json
+
+    Display available enum values
+    $ ./sreq.py /your/cinder-volume/log/location.log --print-enums
+
+    Sort the results by an enum value
+    $ ./sreq.py /your/cinder-volume/log/location.log --pretty --sort RESDELTA
+
+    Filter by an exact enum value
+    $ ./sreq.py /your/cinder-volume/log/location.log \
+--pretty \
+--filter REQTRACE=7913f69f-3d56-49e0-a347-e095b982fb6a
+
+    Filter by enum contents
+
+    $ ./sreq.py /your/cinder-volume/log/location.log \
+--pretty \
+--filter REQPAYLOAD=OS-7913f69f-3d56-49e0-a347-e095b982fb6a
+--check-contents
+
+    Show only requests without replies
+    $ ./sreq.py /your/cinder-volume/log/location.log \
+--pretty \
+--orphans
+
+    Show Volume Attach/Detach (useful for mapping volume to instance)
+    $ ./sreq.py /your/cinder-volume/log/location.log --attach-detach
+"""
 DREQ = re.compile("""^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*?
 Datera Trace ID: (?P<trace>\w+-\w+-\w+-\w+-\w+)
 Datera Request ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
@@ -97,6 +108,13 @@ TUP_DESCRIPTIONS = {"REQTIME":     "Request Timestamp",
                     "RESURL":      "Response URL",
                     "RESPAYLOAD":  "Response Payload"}
 
+AD_VALS = {"TIME": 0,
+           "TYPE": 1,
+           "VOLID": 2,
+           "VMID": 3,
+           "DEVICE": 4,
+           "HOST": 5}
+
 OPERATORS = {"=": "X equals Y",
              ">": "X greater than Y",
              "<": "X less than Y",
@@ -137,7 +155,9 @@ def find_attach_detach(lines):
                 dmatch.group("time"),
                 'detach',
                 dmatch.group("vol"),
-                dmatch.group("vm")))
+                dmatch.group("vm"),
+                None,
+                None))
     return attach_detach
 
 
@@ -150,15 +170,41 @@ def main(args):
         for k, v in sorted(OPERATORS.items()):
             print(str("{:>10}: {}".format(k, v)))
         sys.exit(0)
-    file = args.logfile
-    data = None
-    with open(file) as f:
-        data = f.readlines()
+    files = args.logfiles
+    data = []
+    for file in files:
+        with open(file) as f:
+            data.extend(f.readlines())
 
     if args.attach_detach:
+        jsond = []
         ad = find_attach_detach(data)
-        for elem in ad:
-            print(elem)
+        limit = args.limit if args.limit else len(ad)
+        if args.sort.upper() == 'RESDELTA':
+            sort = 'TIME'
+        else:
+            sort = args.sort.upper()
+        for entry in reversed(sorted(ad, key=lambda x: x[AD_VALS[sort]])):
+            if limit == 0:
+                break
+            elif args.json:
+                d = {}
+                for enum, val in AD_VALS.items():
+                    d[enum] = entry[val]
+                jsond.append(d)
+            elif args.pretty:
+                print()
+                for enum, val in sorted(AD_VALS.items(), key=lambda x: x[1]):
+                    print(enum, ":", entry[val])
+                print()
+            elif not args.quiet:
+                print()
+                print(*entry)
+                print()
+
+            limit -= 1
+        if jsond:
+            print(json.dumps(jsond))
         sys.exit(0)
 
     found = {}
@@ -288,8 +334,9 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("logfile", nargs="?")
+    parser = argparse.ArgumentParser(USAGE)
+    parser.add_argument("logfiles", nargs="*",
+                        help="Must be uncompressed text files")
     parser.add_argument("--print-enums", action="store_true",
                         help="Print available sorting/filtering enums")
     parser.add_argument("--print-operators", action="store_true",
