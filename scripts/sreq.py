@@ -11,48 +11,51 @@ try:
 except ImportError:
     text_histogram = None
 
+VERSION = "v1.0.0"
+
 USAGE = """
-SREQ -- The Request Sorter
 
-Usage:
+SREQ
+----
+The Datera Cinder Driver Request Sorter
 
-    Basic
+Basic
     $ ./sreq.py /your/cinder-volume/log/location.log
 
-    Multiple Log Files
+Multiple Log Files
     $ ./sreq.py /your/cinder-volume/log/location.log \
 /your/cinder-volume/log/location2.log
 
-    Pretty print the results
+Pretty print the results
     $ ./sreq.py /your/cinder-volume/log/location.log --pretty
 
-    Output JSON
+Output JSON
     $ ./sreq.py /your/cinder-volume/log/location.log --json
 
-    Display available enum values
+Display available enum values
     $ ./sreq.py /your/cinder-volume/log/location.log --print-enums
 
-    Sort the results by an enum value
+Sort the results by an enum value
     $ ./sreq.py /your/cinder-volume/log/location.log --pretty --sort RESDELTA
 
-    Filter by an exact enum value
+Filter by an exact enum value
     $ ./sreq.py /your/cinder-volume/log/location.log \
 --pretty \
 --filter REQTRACE=7913f69f-3d56-49e0-a347-e095b982fb6a
 
-    Filter by enum contents
+Filter by enum contents
 
     $ ./sreq.py /your/cinder-volume/log/location.log \
 --pretty \
 --filter REQPAYLOAD=OS-7913f69f-3d56-49e0-a347-e095b982fb6a
 --check-contents
 
-    Show only requests without replies
+Show only requests without replies
     $ ./sreq.py /your/cinder-volume/log/location.log \
 --pretty \
 --orphans
 
-    Show Volume Attach/Detach (useful for mapping volume to instance)
+Show Volume Attach/Detach (useful for mapping volume to instance)
     $ ./sreq.py /your/cinder-volume/log/location.log --attach-detach
 """
 DREQ = re.compile("""^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*?
@@ -162,6 +165,10 @@ def find_attach_detach(lines):
 
 
 def main(args):
+    if args.version:
+        print("SREQ\n----\nThe Datera Cinder Driver Request Sorter\n",
+              VERSION)
+        sys.exit(0)
     if args.print_enums:
         for elem in sorted(TUP_VALS.keys()):
             print(str("{:>10}: {}".format(elem, TUP_DESCRIPTIONS[elem])))
@@ -359,6 +366,8 @@ if __name__ == "__main__":
                              "did not recieve any response")
     parser.add_argument("-a", "--attach-detach", action="store_true",
                         help="Show attaches/detaches")
+    parser.add_argument("-v", "--version", action="store_true",
+                        help="Print version info")
     parser.add_argument("--stats", action="store_true")
     args = parser.parse_args()
     sys.exit(main(args))
