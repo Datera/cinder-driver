@@ -3,6 +3,7 @@ from __future__ import unicode_literals, division, print_function
 
 import argparse
 import datetime
+import errno
 import os
 import random
 import tempfile
@@ -100,6 +101,13 @@ def copy_filter_files(ssh, files):
                 tmpd, fn, tmpd)))
     # Copy to location
     shutil.move("{}/{}".format(tmpd, fn), "{}/{}".format(LOCAL_LOGDIR, fn))
+
+    # More robust tmp dir removal
+    try:
+        shutil.rmtree(tmpd)
+    except OSError as e:
+        if e.errno != errno.ENOENT:
+            raise
 
 
 def main(args):
