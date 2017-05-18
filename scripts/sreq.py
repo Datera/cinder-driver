@@ -58,7 +58,7 @@ Show only requests without replies
 Show Volume Attach/Detach (useful for mapping volume to instance)
     $ ./sreq.py /your/cinder-volume/log/location.log --attach-detach
 """
-DREQ = re.compile("""^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*?
+DREQ = re.compile(r"""^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*?
 Datera Trace ID: (?P<trace>\w+-\w+-\w+-\w+-\w+)
 Datera Request ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
 Datera Request URL: (?P<url>.*?)
@@ -66,7 +66,7 @@ Datera Request Method: (?P<method>.*?)
 Datera Request Payload: (?P<payload>.*?)
 Datera Request Headers: (?P<headers>.*?\})""")
 
-DRES = re.compile("""^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*?
+DRES = re.compile(r"""^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*?
 Datera Trace ID: (?P<trace>\w+-\w+-\w+-\w+-\w+)
 Datera Response ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
 Datera Response TimeDelta: (?P<delta>\d+\.\d\d?\d?)s
@@ -74,14 +74,14 @@ Datera Response URL: (?P<url>.*?)
 Datera Response Payload: (?P<payload>.*?)
 Datera Response Object.*""")
 
-ATTACH = re.compile("^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*"
-                    "Attaching volume (?P<vol>(\w+-){4}\w+) to instance "
-                    "(?P<vm>(\w+-){4}\w+) at mountpoint (?P<device>\S+) "
-                    "on host (?P<host>\S+)\.")
+ATTACH = re.compile(r"^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*"
+                    r"Attaching volume (?P<vol>(\w+-){4}\w+) to instance "
+                    r"(?P<vm>(\w+-){4}\w+) at mountpoint (?P<device>\S+) "
+                    r"on host (?P<host>\S+)\.")
 
-DETACH = re.compile("^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*"
-                    "Detaching volume (?P<vol>(\w+-){4}\w+) from instance "
-                    "(?P<vm>(\w+-){4}\w+)")
+DETACH = re.compile(r"^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*"
+                    r"Detaching volume (?P<vol>(\w+-){4}\w+) from instance "
+                    r"(?P<vm>(\w+-){4}\w+)")
 
 TUP_VALS = {"REQTIME":     0,
             "REQTRACE":    1,

@@ -5,7 +5,10 @@ import argparse
 import datetime
 import os
 import random
+import tempfile
 import time
+import shlex
+import shutil
 import subprocess
 import sys
 
@@ -16,6 +19,7 @@ SUCCESS = 0
 FAILURE = 1
 PASS_VAR = "CH_ROOT_PASS"
 KEY_VAR = "CH_ROOT_KEY"
+LOGFILE_VAR = "CH_LOGFILES"
 LOCAL_LOGDIR = "/var/log/datera"
 ARCHIVE_FILENAME = ("datera-cinder-driver.{node}.{controller}.log.DEBUG"
                     ".{datetime}.UTC.{random}.tar.gz")
@@ -26,8 +30,9 @@ USAGE = """
     or
     $ export {kv}='username:keyfile:ip'
     then
+    $ export {lv}='logfile1:logfile2:logfile3'
     $ callhome.py logfile
-""".format(pv=PASS_VAR, kv=KEY_VAR)
+""".format(pv=PASS_VAR, kv=KEY_VAR, lv=LOGFILE_VAR)
 
 
 def exec_command(ssh, command, fail_ok=False):
@@ -47,20 +52,54 @@ def exec_command(ssh, command, fail_ok=False):
     return result
 
 
-def copy_files(ssh, files):
-    there_hostname = exec_command(ssh, "uname -a").split()[1]
-    here_hostname = subprocess.check_output(["uname", "-a"]).split()[1]
-    # TODO make compatible with Datera logs
-    fn = ARCHIVE_FILENAME.format(
-        node=here_hostname,
-        controller=there_hostname,
+def gen_filename(node, controller):
+    return ARCHIVE_FILENAME.format(
+        node=node,
+        controller=controller,
         datetime=datetime.datetime.fromtimestamp(time.time()).strftime(
             "%Y%m%d-%H%M%S%f"),
         random=str(random.randint(1000, 9999)))
+
+
+def copy_filter_files(ssh, files):
+    there_hostname = exec_command(ssh, "uname -a").split()[1]
+    here_hostname = subprocess.check_output(["uname", "-a"]).split()[1]
+    tmpd = tempfile.mkdtemp()
+    tmpfn = "cinder-logs.{}.tar.gz".format(str(random.randint(1, 99999)))
+    tmpdfn = "{}/{}".format(tmpd, tmpfn)
     # We use -h to dereference symbolic links
-    exec_command(ssh, "tar -hczf {} {}".format(fn, " ".join(files)))
+
+    # Copy Archive to /tmp
+    exec_command(ssh, "tar -hczf {} {}".format(tmpfn, " ".join(files)))
     sftp = ssh.open_sftp()
-    sftp.get(fn, '{}/{}'.format(LOCAL_LOGDIR, fn))
+    sftp.get(tmpfn, tmpdfn)
+
+    # Extract
+    subprocess.check_call(
+        shlex.split("tar -zxf {} -C {}".format(tmpdfn, tmpd)))
+    os.remove(tmpdfn)
+
+    # Filter
+    tmpfiles = " ".join(("{}/{}".format(tmpd, file) for file in files))
+    rfile = "{}/requests.json".format(tmpd)
+    afile = "{}/attach_detach.json".format(tmpd)
+    with open(rfile, "w+") as f:
+        subprocess.check_call(
+            shlex.split("./sreq.py {} --json".format(tmpfiles)), stdout=f)
+    with open(afile, "w+") as f:
+        subprocess.check_call(
+            shlex.split(
+                "./sreq.py {} --json --attach-detach".format(tmpfiles)),
+            stdout=f)
+
+    # Re-Archive
+    fn = gen_filename(here_hostname, there_hostname)
+    subprocess.check_call(
+        shlex.split(
+            "tar -czf {}/{} -C {} requests.json attach_detach.json".format(
+                tmpd, fn, tmpd)))
+    # Copy to location
+    shutil.move("{}/{}".format(tmpd, fn), "{}/{}".format(LOCAL_LOGDIR, fn))
 
 
 def main(args):
@@ -68,7 +107,11 @@ def main(args):
         print("Cinder Call-Home Script:", VERSION)
         return SUCCESS
 
-    if not args.logfiles:
+    if args.logfiles:
+        logfiles = args.logfiles
+    elif os.getenv(LOGFILE_VAR):
+        logfiles = os.getenv(LOGFILE_VAR).split(":")
+    else:
         print("At least one logfile must be specified")
         return FAILURE
 
@@ -109,7 +152,7 @@ def main(args):
               "Please set one or the other".format(pv=PASS_VAR, kv=KEY_VAR))
         return FAILURE
 
-    copy_files(ssh, args.logfiles)
+    copy_filter_files(ssh, logfiles)
     return SUCCESS
 
 if __name__ == "__main__":
