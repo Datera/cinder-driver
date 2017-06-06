@@ -2,7 +2,11 @@
 Datera Cinder Repository
 =======
 
-.. list-table:: Datera Driver Versions
+------
+Datera Cinder Volume Driver
+------
+
+.. list-table:: Datera Volume Driver Versions
    :header-rows: 1
    :class: config-ref-table
 
@@ -151,9 +155,9 @@ Datera Cinder Repository
      - 1.0, 1.1
      - https://raw.githubusercontent.com/Datera/cinder-driver/liberty-v2/src/datera.py
 
-=======
-Cinder.conf Options
-=======
+-------
+Volume Driver Cinder.conf Options
+-------
 
 .. list-table:: Description of Datera volume driver configuration options
    :header-rows: 1
@@ -187,9 +191,9 @@ Cinder.conf Options
      - (Bool) Set to True to disable profiling in the Datera driver
 
 
-=======
+-------
 Volume-Type ExtraSpecs
-=======
+-------
 
 .. list-table:: Description of Datera volume-type extra specs
    :header-rows: 1
@@ -226,3 +230,52 @@ Volume-Type ExtraSpecs
    * - ``DF:total_iops_max`` = ``0``
      - (Int) Total write IOPS setting for volume QoS.  Use 0 for unlimited
 
+------
+Datera Cinder Backup Driver
+------
+
+.. list-table:: Datera Backup Driver Versions
+   :header-rows: 1
+   :class: config-ref-table
+
+   * - OpenStack Release
+     - Driver Branch Name
+     - Driver Version
+     - Additional Capabilities Introduced
+     - Supported Datera Product Versions
+     - URL
+   * - Master
+     - master
+     - 1.0.0
+     - Initial Driver
+     - 2.1, 2.2
+     - Driver config options go under [DEFAULT]
+
+
+-------
+Backup Driver Cinder.conf Options
+-------
+.. list-table:: Description of Datera backup driver configuration options
+   :header-rows: 1
+   :class: config-ref-table
+
+   * - Configuration option = Default value
+     - Description
+   * - ``backup_datera_san_ip`` = ``None``
+     - (Required) (String) Datera EDF Mgmt IP
+   * - ``backup_datera_san_login`` = ``None``
+     - (Required) (String) Datera EDF Username
+   * - ``backup_datera_san_password`` = ``None``
+     - (Required) (String) Datera EDF Password
+   * - ``backup_datera_tenant_id`` = ``/root``
+     - (Required) (String) Datera EDF Tenant
+   * - ``backup_datera_chunk_size`` = ``1``
+     - (Int) Total chunk size (in GB, min 1 GB) to use for backup
+   * - ``backup_datera_progress_timer`` = ``False``
+     - (Bool) Enable progress timer for backup
+   * - ``backup_datera_replica_count`` = ``3``
+     - (Int) Number of replicas for each backup container
+   * - ``backup_datera_placement_mode`` = ``hybrid``
+     - (String) Options: hybrid, single_flash, all_flash
+   * - ``backup_datera_api_port`` = ``7717``
+     - (String) Datera EDF API port
