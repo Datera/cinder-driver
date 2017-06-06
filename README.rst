@@ -16,6 +16,12 @@ Datera Cinder Volume Driver
      - Additional Capabilities Introduced
      - Supported Datera Product Versions
      - URL
+   * - Master
+     - master
+     - 2.4.0
+     - Fast Retype
+     - 1.0, 1.1, 2.1, 2.2
+     - N/A
    * - Ocata
      - ocata-v2.3.2
      - 2.3.2
