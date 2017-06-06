@@ -203,10 +203,10 @@ def _get_supported_api_versions(driver):
         return driver.api_cache
     driver.api_timeout = t + API_TIMEOUT
     results = []
-    host = driver.configuration.san_ip
-    port = driver.configuration.datera_api_port
-    client_cert = driver.configuration.driver_client_cert
-    client_cert_key = driver.configuration.driver_client_cert_key
+    host = driver.san_ip
+    port = driver.api_port
+    client_cert = driver.driver_client_cert
+    client_cert_key = driver.driver_client_cert_key
     cert_data = None
     header = {'Content-Type': 'application/json; charset=utf-8',
               'Datera-Driver': 'OpenStack-Cinder-{}'.format(driver.VERSION)}
@@ -382,8 +382,8 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
     to 2.1 product versions and later)
     :returns: a dict of the response from the Datera cluster
     """
-    host = driver.configuration.san_ip
-    port = driver.configuration.datera_api_port
+    host = driver.san_ip
+    port = driver.api_port
     api_token = driver.datera_api_token
 
     payload = json.dumps(body, ensure_ascii=False)
@@ -393,7 +393,7 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
     header.update(driver.HEADER_DATA)
 
     protocol = 'http'
-    if driver.configuration.driver_use_ssl:
+    if driver.driver_use_ssl:
         protocol = 'https'
 
     if api_token:
@@ -408,8 +408,8 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
     elif driver.tenant_id and driver.tenant_id.lower() != "map":
         header['tenant'] = driver.tenant_id
 
-    client_cert = driver.configuration.driver_client_cert
-    client_cert_key = driver.configuration.driver_client_cert_key
+    client_cert = driver.driver_client_cert
+    client_cert_key = driver.driver_client_cert_key
     cert_data = None
 
     if client_cert:
