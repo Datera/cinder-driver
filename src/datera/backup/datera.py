@@ -140,9 +140,10 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
 
     Version history:
         1.0.0 - Initial driver
+        1.0.1 - Added secondary backup driver dispatching/multiplexing
     """
 
-    VERSION = '1.0.0'
+    VERSION = '1.0.1'
 
     HEADER_DATA = {'Datera-Driver': 'OpenStack-Backup-{}'.format(VERSION)}
 

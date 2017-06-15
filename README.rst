@@ -285,3 +285,48 @@ Backup Driver Cinder.conf Options
      - (String) Options: hybrid, single_flash, all_flash
    * - ``backup_datera_api_port`` = ``7717``
      - (String) Datera EDF API port
+   * - ``backup_datera_secondary_backup_drivers`` = []
+     - (List) Secondary backup drivers for the Datera EDF driver to manage
+
+-------
+Backup Driver Dispatching/Multiplexing
+-------
+As of backup driver version 1.0.1 we allow for managing multiple secondary
+backup driver backends.  Vanilla Cinder supports only a single backup driver
+backend in an OpenStack cluster.  We've added backup driver dispatching to the
+Datera EDF backup driver to allow for multiple backup driver backends to be used
+along side the Datera EDF backup driver backend.
+
+To utilize this function, set the following in your cinder.conf:
+
+.. code-block:: bash
+
+    backup_datera_secondary_backup_drivers = your.backup.driver.module
+
+If you wanted to use Ceph, you would set this to:
+
+.. code-block:: bash
+
+    backup_datera_secondary_backup_drivers = cinder.backup.drivers.ceph
+
+You would then use the following naming convention to select which backend you
+want to store the backup on:
+
+.. code-block:: bash
+
+    openstack volume backup create your_volume --name <driver_module>_you_backup_name
+
+Where <driver_module> is replaced by the module of the driver you want to use.
+In the case of Ceph it would be "ceph".  Example:
+
+.. code-block:: bash
+
+    openstack volume backup create hadoop1 --name ceph_hadoop1_backup
+
+If no name is specified the Datera EDF driver will be used, but you can also use
+the following to manually specify the Datera EDF backup driver:
+
+.. code-block:: bash
+
+    openstack volume backup create cassandra1 --name datera_cassandra1_backup
+
