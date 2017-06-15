@@ -27,6 +27,11 @@ restore a backup by restoring snapshots in reverse order and reading the data
 back.
 
 Since our minimum volume size is 1 GB, we'll use that as our minimum chunk size
+
+Multiplexing:
+        This version of the driver also handles multiplexing between different
+        drivers.  We determine the driver type by something!
+
 """
 import contextlib
 import hashlib
@@ -44,7 +49,7 @@ from eventlet.green import threading
 from oslo_concurrency import processutils as putils
 from oslo_config import cfg
 from oslo_log import log as logging
-from oslo_utils import excutils, units
+from oslo_utils import excutils, units, importutils
 
 from cinder.backup import chunkeddriver
 from cinder import exception
@@ -86,6 +91,13 @@ bd_opts = [
     cfg.StrOpt('backup_datera_api_port',
                default='7717',
                help='Datera API port.'),
+    cfg.ListOpt('backup_datera_secondary_backup_drivers',
+                default=[],
+                help='Secondary drivers to manage with this driver.  This is '
+                     'done as a way to simulate a scheduler for backups. '
+                     'Takes the form:\n'
+                     '["cinder.backup.drivers.driver1",\n'
+                     ' "cinder.backup.drivers.driver2"]'),
     cfg.BoolOpt('backup_datera_debug',
                 default=False,
                 help="True to set function arg and return logging"),
@@ -143,7 +155,10 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
         super(DateraBackupDriver, self).__init__(context, chunk_size,
                                                  sha_size, container_name,
                                                  db_driver)
+        self.ctxt = context
+        self.db_driver = db_driver
         self.support_force_delete = True
+        self._backup = None
         self.san_ip = CONF.backup_datera_san_ip
         self.username = CONF.backup_datera_san_login
         self.password = CONF.backup_datera_san_password
@@ -153,6 +168,10 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
         self.driver_client_cert_key = CONF.backup_driver_client_cert_key
         self.replica_count = CONF.backup_datera_replica_count
         self.placement_mode = CONF.backup_datera_placement_mode
+        self.driver_strs = CONF.backup_datera_secondary_backup_drivers
+        self.driver = None
+        self.drivers = {}
+        self.type = 'datera'
         self.cluster_stats = {}
         self.datera_api_token = None
         self.interval = CONF.backup_datera_503_interval
@@ -174,8 +193,15 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
         self.thread_local = threading.local()
         self.thread_local.trace_id = ""
 
+        self._populate_secondary_drivers()
+
         datc.register_driver(self)
         self._check_options()
+
+    def _populate_secondary_drivers(self):
+        for dstr in self.driver_strs:
+            driver = importutils.import_module(dstr)
+            self.drivers[dstr.split(".")[-1]] = driver
 
     @staticmethod
     def _execute(cmd):
@@ -465,18 +491,47 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
     def _parse_name(self, name):
         return int(name.split("-")[-1])
 
+    def _get_driver(self):
+        if not self.driver:
+            supported_list = []
+            for dstr in self.driver_strs:
+                supported_list.append(dstr.split(".")[-1])
+            name = (self._backup['display_name'].lower()
+                    if self._backup['display_name'] else None)
+            if not name or 'datera' in name:
+                self.type = 'datera'
+                return
+            for supported in supported_list:
+                if supported in name:
+                    self.type = supported
+                    self.driver = self.drivers[self.type].get_backup_driver(
+                        self.ctxt)
+            if not self.driver:
+                raise EnvironmentError(
+                    "Unsupported driver: {}, display name of backup must "
+                    "contain name of driver to use.  Supported drivers: {}"
+                    "".format(name, self.drivers.keys()))
+        return self.driver
+
     def put_container(self, bucket):
         """Create the bucket if not exists."""
-        if self._volume_exists(bucket):
-            return
-        else:
-            vol_size = CONF.backup_datera_chunk_size
-            self._create_volume(bucket, vol_size)
+        driver = self._get_driver()
+        if not driver:
+            if self._volume_exists(bucket):
+                return
+            else:
+                vol_size = CONF.backup_datera_chunk_size
+                self._create_volume(bucket, vol_size)
+                return
+        return driver.put_container(bucket)
 
     def get_container_entries(self, bucket, prefix):
         """Get bucket entry names."""
-        return ["-".join((prefix, "{:05d}".format(i + 1)))
-                for i, _ in enumerate(self._list_snapshots(bucket))][:-2]
+        driver = self._get_driver()
+        if not driver:
+            return ["-".join((prefix, "{:05d}".format(i + 1)))
+                    for i, _ in enumerate(self._list_snapshots(bucket))][:-2]
+        return driver.get_container_entries(bucket, prefix)
 
     def get_object_writer(self, bucket, object_name, extra_metadata=None):
         """Return a writer object.
@@ -484,8 +539,10 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
         Returns a writer object that stores a chunk of volume data in a
         Datera volume
         """
-        # Connect to target
-        return DateraObjectWriter(bucket, object_name, self)
+        driver = self._get_driver()
+        if not driver:
+            return DateraObjectWriter(bucket, object_name, self)
+        return driver.get_object_reader(bucket, object_name, extra_metadata)
 
     def get_object_reader(self, bucket, object_name, extra_metadata=None):
         """Return reader object.
@@ -493,36 +550,133 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
         Returns a reader object that retrieves a chunk of backed-up volume data
         from a Datera EDF object store.
         """
-        return DateraObjectReader(bucket, object_name, self)
+        driver = self._get_driver()
+        if not driver:
+            return DateraObjectReader(bucket, object_name, self)
+        return driver.get_object_reader(bucket, object_name, extra_metadata)
 
     def delete_object(self, bucket, object_name):
         """Deletes a backup object from a Datera EDF object store."""
-        self._delete_snapshot(bucket, object_name)
+        driver = self._get_driver()
+        if not driver:
+            return self._delete_snapshot(bucket, object_name)
+        return driver.delete_object(bucket, object_name)
+
+    def backup(self, backup, volume_file, backup_metadata=False):
+        self._backup = backup
+        driver = self._get_driver()
+        if not driver:
+            # We should always backup metadata in the Datera driver
+            # It costs practically nothing and Tempest expects metadata to
+            # be backed up.
+            return super(DateraBackupDriver, self).backup(
+                backup, volume_file, backup_metadata=True)
+        return driver.backup(backup, volume_file, backup_metadata)
+
+    def restore(self, backup, volume_id, volume_file):
+        self._backup = backup
+        driver = self._get_driver()
+        if not driver:
+            return super(DateraBackupDriver, self).restore(
+                backup, volume_id, volume_file)
+        return driver.restore(backup, volume_id, volume_file)
+
+    # def get_metadata(self, volume_id):
+    #     driver = self._get_driver()
+    #     if not driver:
+    #         return super(DateraBackupDriver, self).get_metadata(volume_id)
+    #     return driver.get_metadata(volume_id)
+
+    # def put_metadata(self, volume_id, json_metadata):
+    #     driver = self._get_driver()
+    #     if not driver:
+    #         return super(DateraBackupDriver, self).put_metadata(
+    #             volume_id, json_metadata)
+    #     return driver.put_metadata(volume_id, json_metadata)
 
     def delete(self, backup):
-        container = backup['container']
-        object_prefix = backup['service_metadata']
-        LOG.debug('delete started, backup: %(id)s, container: %(cont)s, '
-                  'prefix: %(pre)s.',
-                  {'id': backup['id'],
-                   'cont': container,
-                   'pre': object_prefix})
-        if container is not None:
-            self._delete_volume(container)
-        LOG.debug('delete %s finished.', backup['id'])
+        self._backup = backup
+        driver = self._get_driver()
+        if not driver:
+            container = backup['container']
+            object_prefix = backup['service_metadata']
+            LOG.debug('delete started, backup: %(id)s, container: %(cont)s, '
+                      'prefix: %(pre)s.',
+                      {'id': backup['id'],
+                       'cont': container,
+                       'pre': object_prefix})
+            if container is not None:
+                self._delete_volume(container)
+            LOG.debug('delete %s finished.', backup['id'])
+            return
+        return driver.delete(backup)
+
+    def export_record(self, backup):
+        """Export driver specific backup record information.
+
+        If backup backend needs additional driver specific information to
+        import backup record back into the system it must overwrite this method
+        and return it here as a dictionary so it can be serialized into a
+        string.
+
+        Default backup driver implementation has no extra information.
+
+        :param backup: backup object to export
+        :returns: driver_info - dictionary with extra information
+        """
+        self._backup = backup
+        driver = self._get_driver()
+        if not driver:
+            return super(DateraBackupDriver, self).export_record(backup)
+        return driver.export_record(backup)
+
+    def import_record(self, backup, driver_info):
+        """Import driver specific backup record information.
+
+        If backup backend needs additional driver specific information to
+        import backup record back into the system it must overwrite this method
+        since it will be called with the extra information that was provided by
+        export_record when exporting the backup.
+
+        Default backup driver implementation does nothing since it didn't
+        export any specific data in export_record.
+
+        :param backup: backup object to export
+        :param driver_info: dictionary with driver specific backup record
+                            information
+        :returns: nothing
+        """
+        self._backup = backup
+        driver = self._get_driver()
+        if not driver:
+            return super(DateraBackupDriver, self).import_record(
+                backup, driver_info)
+        return driver.import_record(backup, driver_info)
 
     def _generate_object_name_prefix(self, backup):
         """Generates a Datera EDF backup object name prefix.
         """
-        return PREFIX
+        driver = self._get_driver()
+        if not driver:
+            return PREFIX
+        return driver._generate_object_name_prefix(self, backup)
 
     def update_container_name(self, backup, bucket):
         """Use the bucket name as provided - don't update."""
-        return "-".join(("BACKUP", str(backup['id'])))
+        driver = self._get_driver()
+        if not driver:
+            if not backup['container']:
+                return "-".join(("BACKUP", str(self._backup['id'])))
+            else:
+                return
+        return driver.update_container_name(self, backup, bucket)
 
     def get_extra_metadata(self, backup, volume):
         """Datera EDF driver does not use any extra metadata."""
-        return
+        driver = self._get_driver()
+        if not driver:
+            return
+        return driver.get_extra_metadata(backup, volume)
 
 
 class DateraObjectWriter(object):
