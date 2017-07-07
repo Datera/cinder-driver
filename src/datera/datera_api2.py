@@ -1,4 +1,4 @@
-# Copyright 2016 Datera
+# Copyright 2017 Datera
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -24,8 +24,8 @@ from oslo_log import log as logging
 from oslo_utils import excutils
 from oslo_utils import units
 
-from cinder.i18n import _, _LI, _LW, _LE
 from cinder import exception
+from cinder.i18n import _
 from cinder.volume import utils as volutils
 
 import cinder.volume.drivers.datera.datera_common as datc
@@ -98,8 +98,8 @@ class DateraApi(object):
         policies = self._get_policies_for_resource(volume)
         template = policies['template']
         if template:
-            LOG.warning(_LW("Volume size not extended due to template binding:"
-                            " volume: %(volume)s, template: %(template)s"),
+            LOG.warning("Volume size not extended due to template binding:"
+                        " volume: %(volume)s, template: %(template)s",
                         volume=volume, template=template)
             return
 
@@ -164,15 +164,15 @@ class DateraApi(object):
                 method='delete',
                 api_version='2')
         except exception.NotFound:
-            msg = _LI("Tried to delete volume %s, but it was not found in the "
-                      "Datera cluster. Continuing with delete.")
-            LOG.info(msg, datc._get_name(volume['id']))
+            LOG.info("Tried to delete volume %s, but it was not found in the "
+                     "Datera cluster. Continuing with delete.",
+                     datc._get_name(volume['id']))
 
     # =================
     # = Ensure Export =
     # =================
 
-    def _ensure_export_2(self, context, volume, connector=None):
+    def _ensure_export_2(self, context, volume, connector):
         return self._create_export_2(context, volume, connector)
 
     # =========================
@@ -341,8 +341,8 @@ class DateraApi(object):
             self._issue_api_request(url, method='put', body=data,
                                     api_version='2')
         except exception.NotFound:
-            msg = _LI("Tried to detach volume %s, but it was not found in the "
-                      "Datera cluster. Continuing with detach.")
+            msg = ("Tried to detach volume %s, but it was not found in the "
+                   "Datera cluster. Continuing with detach.")
             LOG.info(msg, volume['id'])
         # TODO(_alastor_): Make acl cleaning multi-attach aware
         self._clean_acl_2(volume)
@@ -436,8 +436,8 @@ class DateraApi(object):
             else:
                 raise exception.NotFound
         except exception.NotFound:
-            msg = _LI("Tried to delete snapshot %s, but was not found in "
-                      "Datera cluster. Continuing with delete.")
+            msg = ("Tried to delete snapshot %s, but was not found in "
+                   "Datera cluster. Continuing with delete.")
             LOG.info(msg, datc._get_name(snapshot['id']))
 
     # ========================
@@ -479,6 +479,9 @@ class DateraApi(object):
             method='post',
             body=app_params,
             api_version='2')
+
+        if (volume['size'] > snapshot['volume_size']):
+            self._extend_volume_2(volume, volume['size'])
 
     # ==========
     # = Manage =
@@ -607,8 +610,8 @@ class DateraApi(object):
                 results = self._issue_api_request('system', api_version='2')
 
                 if 'uuid' not in results:
-                    LOG.error(_LE(
-                        'Failed to get updated stats from Datera Cluster.'))
+                    LOG.error(
+                        'Failed to get updated stats from Datera Cluster.')
 
                 backend_name = self.configuration.safe_get(
                     'volume_backend_name')
@@ -626,8 +629,7 @@ class DateraApi(object):
 
                 self.cluster_stats = stats
             except exception.DateraAPIException:
-                LOG.error(_LE('Failed to get updated stats from Datera '
-                              'cluster.'))
+                LOG.error('Failed to get updated stats from Datera cluster.')
         return self.cluster_stats
 
     def _is_manageable(self, app_inst):
@@ -659,10 +661,10 @@ class DateraApi(object):
             self.datera_api_token = results['key']
         except exception.NotAuthorized:
             with excutils.save_and_reraise_exception():
-                LOG.error(_LE('Logging into the Datera cluster failed. Please '
-                              'check your username and password set in the '
-                              'cinder.conf and start the cinder-volume '
-                              'service again.'))
+                LOG.error('Logging into the Datera cluster failed. Please '
+                          'check your username and password set in the '
+                          'cinder.conf and start the cinder-volume '
+                          'service again.')
 
     # ===========
     # = Polling =
@@ -686,7 +688,7 @@ class DateraApi(object):
 
     def _si_poll(self, volume, policies):
         # Initial 4 second sleep required for some Datera versions
-        eventlet.sleep(datc.DEFAULT_SI_SLEEP)
+        eventlet.sleep(datc.DEFAULT_SI_SLEEP_API_2)
         TIMEOUT = 10
         retry = 0
         check_url = datc.URL_TEMPLATES['si_inst'](

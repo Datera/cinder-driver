@@ -1,4 +1,4 @@
-# Copyright 2016 Datera
+# Copyright 2017 Datera
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -25,10 +25,11 @@ import eventlet
 import requests
 
 from oslo_log import log as logging
+from six.moves import http_client
 
 from cinder import context
 from cinder import exception
-from cinder.i18n import _, _LI, _LE
+from cinder.i18n import _
 from cinder.volume import qos_specs
 from cinder.volume import volume_types
 
@@ -61,8 +62,9 @@ URL_TEMPLATES = {
             '{}', volume_name)),
     'at': lambda: 'app_templates/{}'}
 
-DEFAULT_SI_SLEEP = 0
-DEFAULT_SNAP_SLEEP = 0
+DEFAULT_SI_SLEEP = 1
+DEFAULT_SI_SLEEP_API_2 = 5
+DEFAULT_SNAP_SLEEP = 1
 INITIATOR_GROUP_PREFIX = "IG-"
 API_VERSIONS = ["2", "2.1"]
 API_TIMEOUT = 20
@@ -167,7 +169,7 @@ def _api_lookup(func):
                     (func.__name__, api_version.replace(".", "_")))
             try:
                 if obj.do_profile:
-                    LOG.info(_LI("Trying method: %s"), name)
+                    LOG.info("Trying method: %s", name)
                     call_id = uuid.uuid4()
                     LOG.debug("Profiling method: %s, id %s", name, call_id)
                     t1 = time.time()
@@ -203,10 +205,10 @@ def _get_supported_api_versions(driver):
         return driver.api_cache
     driver.api_timeout = t + API_TIMEOUT
     results = []
-    host = driver.san_ip
-    port = driver.api_port
-    client_cert = driver.driver_client_cert
-    client_cert_key = driver.driver_client_cert_key
+    host = driver.configuration.san_ip
+    port = driver.configuration.datera_api_port
+    client_cert = driver.configuration.driver_client_cert
+    client_cert_key = driver.configuration.driver_client_cert_key
     cert_data = None
     header = {'Content-Type': 'application/json; charset=utf-8',
               'Datera-Driver': 'OpenStack-Cinder-{}'.format(driver.VERSION)}
@@ -228,8 +230,8 @@ def _get_supported_api_versions(driver):
                     str(resp.json().get("code")) == "99"):
                 results.append(version)
             else:
-                LOG.error(_LE("No supported API versions available, "
-                              "Please upgrade your Datera EDF software"))
+                LOG.error("No supported API versions available, "
+                          "Please upgrade your Datera EDF software")
     return results
 
 
@@ -246,16 +248,12 @@ def _get_volume_type_obj(driver, resource):
 
 
 def _get_policies_for_resource(driver, resource):
-    volume_type = driver._get_volume_type_obj(resource)
-    return driver._get_policies_for_volume_type(volume_type)
-
-
-def _get_policies_for_volume_type(driver, volume_type):
     """Get extra_specs and qos_specs of a volume_type.
 
     This fetches the scoped keys from the volume type. Anything set from
      qos_specs will override key/values set from extra_specs.
     """
+    volume_type = driver._get_volume_type_obj(resource)
     # Handle case of volume with no type.  We still want the
     # specified defaults from above
     if volume_type:
@@ -334,20 +332,21 @@ def _handle_bad_status(driver,
                        cert_data,
                        sensitive=False,
                        conflict_ok=False):
-    if (response.status_code == 400 and
+    if (response.status_code == http_client.BAD_REQUEST and
             connection_string.endswith("api_versions")):
         # Raise the exception, but don't log any error.  We'll just fall
         # back to the old style of determining API version.  We make this
         # request a lot, so logging it is just noise
         raise exception.DateraAPIException
-    if response.status_code == 404:
+    if response.status_code == http_client.NOT_FOUND:
         raise exception.NotFound(response.json()['message'])
-    elif response.status_code in [403, 401]:
+    elif response.status_code in [http_client.FORBIDDEN,
+                                  http_client.UNAUTHORIZED]:
         raise exception.NotAuthorized()
-    elif response.status_code == 409 and conflict_ok:
+    elif response.status_code == http_client.CONFLICT and conflict_ok:
         # Don't raise, because we're expecting a conflict
         pass
-    elif response.status_code == 503:
+    elif response.status_code == http_client.SERVICE_UNAVAILABLE:
         current_retry = 0
         while current_retry <= driver.retry_attempts:
             LOG.debug("Datera 503 response, trying request again")
@@ -359,7 +358,7 @@ def _handle_bad_status(driver,
                                    cert_data)
             if resp.ok:
                 return response.json()
-            elif resp.status_code != 503:
+            elif resp.status_code != http_client.SERVICE_UNAVAILABLE:
                 driver._raise_response(resp)
     else:
         driver._raise_response(response)
@@ -382,8 +381,8 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
     to 2.1 product versions and later)
     :returns: a dict of the response from the Datera cluster
     """
-    host = driver.san_ip
-    port = driver.api_port
+    host = driver.configuration.san_ip
+    port = driver.configuration.datera_api_port
     api_token = driver.datera_api_token
 
     payload = json.dumps(body, ensure_ascii=False)
@@ -393,7 +392,7 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
     header.update(driver.HEADER_DATA)
 
     protocol = 'http'
-    if driver.driver_use_ssl:
+    if driver.configuration.driver_use_ssl:
         protocol = 'https'
 
     if api_token:
@@ -408,8 +407,8 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
     elif driver.tenant_id and driver.tenant_id.lower() != "map":
         header['tenant'] = driver.tenant_id
 
-    client_cert = driver.driver_client_cert
-    client_cert_key = driver.driver_client_cert_key
+    client_cert = driver.configuration.driver_client_cert
+    client_cert_key = driver.configuration.driver_client_cert_key
     cert_data = None
 
     if client_cert:
@@ -424,19 +423,19 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
     if driver.do_profile:
         t1 = time.time()
     if not sensitive:
-        LOG.debug(("\nDatera Trace ID: %s\n"
-                   "Datera Request ID: %s\n"
-                   "Datera Request URL: /v%s/%s\n"
-                   "Datera Request Method: %s\n"
-                   "Datera Request Payload: %s\n"
-                   "Datera Request Headers: %s\n"),
-                  driver.thread_local.trace_id,
-                  request_id,
-                  api_version,
-                  resource_url,
-                  method,
-                  payload,
-                  header)
+        LOG.debug("\nDatera Trace ID: %(tid)s\n"
+                  "Datera Request ID: %(rid)s\n"
+                  "Datera Request URL: /v%(api)s/%(url)s\n"
+                  "Datera Request Method: %(method)s\n"
+                  "Datera Request Payload: %(payload)s\n"
+                  "Datera Request Headers: %(header)s\n",
+                  {'tid': driver.thread_local.trace_id,
+                   'rid': request_id,
+                   'api': api_version,
+                   'url': resource_url,
+                   'method': method,
+                   'payload': payload,
+                   'header': header})
     response = driver._request(connection_string,
                                method,
                                payload,
@@ -450,18 +449,18 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
         t2 = time.time()
         timedelta = round(t2 - t1, 3)
     if not sensitive:
-        LOG.debug(("\nDatera Trace ID: %s\n"
-                   "Datera Response ID: %s\n"
-                   "Datera Response TimeDelta: %ss\n"
-                   "Datera Response URL: %s\n"
-                   "Datera Response Payload: %s\n"
-                   "Datera Response Object: %s\n"),
-                  driver.thread_local.trace_id,
-                  request_id,
-                  timedelta,
-                  response.url,
-                  payload,
-                  vars(response))
+        LOG.debug("\nDatera Trace ID: %(tid)s\n"
+                  "Datera Response ID: %(rid)s\n"
+                  "Datera Response TimeDelta: %(delta)ss\n"
+                  "Datera Response URL: %(url)s\n"
+                  "Datera Response Payload: %(payload)s\n"
+                  "Datera Response Object: %(obj)s\n",
+                  {'tid': driver.thread_local.trace_id,
+                   'rid': request_id,
+                   'delta': timedelta,
+                   'url': response.url,
+                   'payload': payload,
+                   'obj': vars(response)})
     if not response.ok:
         driver._handle_bad_status(response,
                                   connection_string,
@@ -478,7 +477,6 @@ def register_driver(driver):
     for func in [_get_supported_api_versions,
                  _get_volume_type_obj,
                  _get_policies_for_resource,
-                 _get_policies_for_volume_type,
                  _request,
                  _raise_response,
                  _handle_bad_status,

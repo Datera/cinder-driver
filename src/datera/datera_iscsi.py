@@ -1,4 +1,4 @@
-# Copyright 2016 Datera
+# Copyright 2017 Datera
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -101,13 +101,8 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
     def __init__(self, *args, **kwargs):
         super(DateraDriver, self).__init__(*args, **kwargs)
         self.configuration.append_config_values(d_opts)
-        self.san_ip = self.configuration.san_ip
-        self.api_port = self.configuration.datera_api_port
         self.username = self.configuration.san_login
         self.password = self.configuration.san_password
-        self.driver_client_cert = self.configuration.driver_client_cert
-        self.driver_client_cert_key = self.configuration.driver_client_cert_key
-        self.driver_use_ssl = self.configuration.driver_use_ssl
         self.cluster_stats = {}
         self.datera_api_token = None
         self.interval = self.configuration.datera_503_interval
@@ -247,6 +242,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
     @datc._api_lookup
     def retype(self, ctxt, volume, new_type, diff, host):
         """Convert the volume to be of the new type.
+
         Returns a boolean indicating whether the retype occurred.
         :param ctxt: Context
         :param volume: A dictionary describing the volume to migrate

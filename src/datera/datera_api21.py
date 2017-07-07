@@ -1,4 +1,4 @@
-# Copyright 2016 Datera
+# Copyright 2017 Datera
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-# import json
 import random
 import re
 import uuid
@@ -26,8 +25,8 @@ from oslo_log import log as logging
 from oslo_utils import excutils
 from oslo_utils import units
 
-from cinder.i18n import _, _LI, _LW, _LE
 from cinder import exception
+from cinder.i18n import _
 from cinder.volume import utils as volutils
 
 import cinder.volume.drivers.datera.datera_common as datc
@@ -91,15 +90,6 @@ class DateraApi(object):
             tenant=tenant)
         self._update_qos_2_1(volume, policies, tenant)
 
-        # metadata = {}
-        # volume_type = self._get_volume_type_obj(volume)
-        # if volume_type:
-        #     metadata.update({datc.M_TYPE: volume_type['name']})
-        # metadata.update(self.HEADER_DATA)
-        # url = datc.URL_TEMPLATES['ai_inst']().format(
-        #     datc._get_name(volume['id']))
-        # self._store_metadata(url, metadata, "create_volume_2_1", tenant)
-
     # =================
     # = Extend Volume =
     # =================
@@ -109,8 +99,8 @@ class DateraApi(object):
         policies = self._get_policies_for_resource(volume)
         template = policies['template']
         if template:
-            LOG.warning(_LW("Volume size not extended due to template binding:"
-                            " volume: %(volume)s, template: %(template)s"),
+            LOG.warning("Volume size not extended due to template binding:"
+                        " volume: %(volume)s, template: %(template)s",
                         volume=volume, template=template)
             return
 
@@ -163,17 +153,6 @@ class DateraApi(object):
 
         if volume['size'] > src_vref['size']:
             self._extend_volume_2_1(volume, volume['size'])
-        # url = datc.URL_TEMPLATES['ai_inst']().format(
-        #     datc._get_name(volume['id']))
-        # volume_type = self._get_volume_type_obj(volume)
-        # if volume_type:
-        #     vtype = volume_type['name']
-        # else:
-        #     vtype = None
-        # metadata = {datc.M_TYPE: vtype,
-        #             datc.M_CLONE: datc._get_name(src_vref['id'])}
-        # self._store_metadata(url, metadata, "create_cloned_volume_2_1",
-        #                      tenant)
 
     # =================
     # = Delete Volume =
@@ -190,8 +169,8 @@ class DateraApi(object):
                 api_version='2.1',
                 tenant=tenant)
         except exception.NotFound:
-            msg = _LI("Tried to delete volume %s, but it was not found in the "
-                      "Datera cluster. Continuing with delete.")
+            msg = ("Tried to delete volume %s, but it was not found in the "
+                   "Datera cluster. Continuing with delete.")
             LOG.info(msg, datc._get_name(volume['id']))
 
     # =================
@@ -255,9 +234,6 @@ class DateraApi(object):
                     'volume_id': volume['id'],
                     'discard': False}}
 
-        # url = datc.URL_TEMPLATES['ai_inst']().format(
-        #     datc._get_name(volume['id']))
-        # self._store_metadata(url, {}, "initialize_connection_2_1", tenant)
         return result
 
     # =================
@@ -363,13 +339,6 @@ class DateraApi(object):
                                         tenant=tenant)
         # Check to ensure we're ready for go-time
         self._si_poll_2_1(volume, policies, tenant)
-        # url = datc.URL_TEMPLATES['ai_inst']().format(
-        #     datc._get_name(volume['id']))
-        # metadata = {}
-        # TODO(_alastor_): Figure out what we want to post with a
-        # create_export
-        # # call
-        # self._store_metadata(url, metadata, "create_export_2_1", tenant)
 
     # =================
     # = Detach Volume =
@@ -387,21 +356,11 @@ class DateraApi(object):
             self._issue_api_request(url, method='put', body=data,
                                     api_version='2.1', tenant=tenant)
         except exception.NotFound:
-            msg = _LI("Tried to detach volume %s, but it was not found in the "
-                      "Datera cluster. Continuing with detach.")
+            msg = ("Tried to detach volume %s, but it was not found in the "
+                   "Datera cluster. Continuing with detach.")
             LOG.info(msg, volume['id'])
         # TODO(_alastor_): Make acl cleaning multi-attach aware
         self._clean_acl_2_1(volume, tenant)
-
-        # url = datc.URL_TEMPLATES['ai_inst']().format(
-        #     datc._get_name(volume['id']))
-        # metadata = {}
-        # try:
-        #     self._store_metadata(url, metadata, "detach_volume_2_1", tenant)
-        # except exception.NotFound:
-        #     # If the object isn't found, we probably are deleting/detaching
-        #     # an already deleted object
-        #     pass
 
     def _check_for_acl_2_1(self, initiator_path):
         """Returns True if an acl is found for initiator_path """
@@ -497,8 +456,8 @@ class DateraApi(object):
                                                 api_version='2.1',
                                                 tenant=tenant)
         except exception.NotFound:
-            msg = _LI("Tried to delete snapshot %s, but parent volume %s was "
-                      "not found in Datera cluster. Continuing with delete.")
+            msg = ("Tried to delete snapshot %s, but parent volume %s was "
+                   "not found in Datera cluster. Continuing with delete.")
             LOG.info(msg,
                      datc._get_name(snapshot['id']),
                      datc._get_name(snapshot['volume_id']))
@@ -518,8 +477,8 @@ class DateraApi(object):
             else:
                 raise exception.NotFound
         except exception.NotFound:
-            msg = _LI("Tried to delete snapshot %s, but was not found in "
-                      "Datera cluster. Continuing with delete.")
+            msg = ("Tried to delete snapshot %s, but was not found in "
+                   "Datera cluster. Continuing with delete.")
             LOG.info(msg, datc._get_name(snapshot['id']))
 
     # ========================
@@ -565,16 +524,20 @@ class DateraApi(object):
             api_version='2.1',
             tenant=tenant)
 
+        if (volume['size'] > snapshot['volume_size']):
+            self._extend_volume_2_1(volume, volume['size'])
+
     # ==========
     # = Retype =
     # ==========
 
     def _retype_2_1(self, ctxt, volume, new_type, diff, host):
         LOG.debug("Retype called\n"
-                  "Volume: %s\n"
-                  "NewType: %s\n"
-                  "Diff: %s\n"
-                  "Host: %s\n" % (volume, new_type, diff, host))
+                  "Volume: %(volume)s\n"
+                  "NewType: %(new_type)s\n"
+                  "Diff: %(diff)s\n"
+                  "Host: %(host)s\n", {'volume': volume, 'new_type': new_type,
+                                       'diff': diff, 'host': host})
         # We'll take the fast route only if the types share the same backend
         # And that backend matches this driver
         old_pol = self._get_policies_for_resource(volume)
@@ -593,7 +556,6 @@ class DateraApi(object):
             self._update_qos_2_1(volume, new_pol, tenant)
             vol_params = (
                 {
-                    # 'name': new_pol['default_volume_name'],
                     'placement_mode': new_pol['placement_mode'],
                     'replica_count': new_pol['replica_count'],
                 })
@@ -801,33 +763,6 @@ class DateraApi(object):
                 api_version='2.1')
         return tenant
 
-    # ============
-    # = Metadata =
-    # ============
-
-    # def _get_metadata(self, obj_url, tenant):
-    #     url = "/".join((obj_url.rstrip("/"), "metadata"))
-    #     mdata = self._issue_api_request(
-    #         url, api_version="2.1", tenant=tenant).get("data")
-    #     # Make sure we only grab the relevant keys
-    #     filter_mdata = {k: json.loads(mdata[k])
-    #                     for k in mdata if k in datc.M_KEYS}
-    #     return filter_mdata
-
-    # def _store_metadata(self, obj_url, data, calling_func_name, tenant):
-    #     mdata = self._get_metadata(obj_url, tenant)
-    #     new_call_entry = (calling_func_name,
-    #                       self.HEADER_DATA['Datera-Driver'])
-    #     if mdata.get(datc.M_CALL):
-    #         mdata[datc.M_CALL].append(new_call_entry)
-    #     else:
-    #         mdata[datc.M_CALL] = [new_call_entry]
-    #     mdata.update(data)
-    #     mdata.update(self.HEADER_DATA)
-    #     data_s = {k: json.dumps(v) for k, v in data.items()}
-    #     url = "/".join((obj_url.rstrip("/"), "metadata"))
-    #     return self._issue_api_request(url, method="put", api_version="2.1",
-    #                                    body=data_s, tenant=tenant)
     # =========
     # = Login =
     # =========
@@ -851,10 +786,10 @@ class DateraApi(object):
             self.datera_api_token = results['key']
         except exception.NotAuthorized:
             with excutils.save_and_reraise_exception():
-                LOG.error(_LE('Logging into the Datera cluster failed. Please '
-                              'check your username and password set in the '
-                              'cinder.conf and start the cinder-volume '
-                              'service again.'))
+                LOG.error('Logging into the Datera cluster failed. Please '
+                          'check your username and password set in the '
+                          'cinder.conf and start the cinder-volume '
+                          'service again.')
 
     # ===========
     # = Polling =
@@ -913,8 +848,8 @@ class DateraApi(object):
                     'system', api_version='2.1')['data']
 
                 if 'uuid' not in results:
-                    LOG.error(_LE(
-                        'Failed to get updated stats from Datera Cluster.'))
+                    LOG.error(
+                        'Failed to get updated stats from Datera Cluster.')
 
                 stats = {
                     'volume_backend_name': self.backend_name,
@@ -931,8 +866,7 @@ class DateraApi(object):
 
                 self.cluster_stats = stats
             except exception.DateraAPIException:
-                LOG.error(_LE('Failed to get updated stats from Datera '
-                              'cluster.'))
+                LOG.error('Failed to get updated stats from Datera cluster.')
         return self.cluster_stats
 
     # =======
