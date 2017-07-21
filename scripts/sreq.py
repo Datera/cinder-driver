@@ -140,6 +140,26 @@ def filter_func(found, loc, val, operator):
         return found
 
 
+def get_filtered(filters, data, vals):
+    fdata = data
+    for f in filters:
+        k, v, operator = None, None, None
+        for operator in OPERATORS.keys():
+            sp = f.split(operator, 1)
+            if len(sp) == 2:
+                k, v = sp
+                break
+        if not k:
+            raise ValueError("No valid operator detected in {}".format(
+                filters))
+        k = k.strip().upper()
+        fdata = filter_func(fdata,
+                            vals[k.upper()],
+                            v,
+                            OPERATORS_FUNC[operator])
+    return fdata
+
+
 def find_attach_detach(lines):
     attach_detach = []
     for line in lines:
@@ -161,7 +181,41 @@ def find_attach_detach(lines):
                 dmatch.group("vm"),
                 None,
                 None))
+    if args.filter:
+        attach_detach = get_filtered(args.filter, attach_detach, AD_VALS)
     return attach_detach
+
+
+def get_attach_detach(args, data):
+    jsond = []
+    ad = find_attach_detach(data)
+    limit = args.limit if args.limit else len(ad)
+    if args.sort.upper() == 'RESDELTA':
+        sort = 'TIME'
+    else:
+        sort = args.sort.upper()
+    for entry in reversed(sorted(ad, key=lambda x: x[AD_VALS[sort]])):
+        if limit == 0:
+            break
+        elif args.json:
+            d = {}
+            for enum, val in AD_VALS.items():
+                d[enum] = entry[val]
+            jsond.append(d)
+        elif args.pretty:
+            print()
+            for enum, val in sorted(AD_VALS.items(), key=lambda x: x[1]):
+                print(enum, ":", entry[val])
+            print()
+        elif not args.quiet:
+            print()
+            print(*entry)
+            print()
+
+        limit -= 1
+    if jsond:
+        print(json.dumps(jsond))
+    sys.exit(0)
 
 
 def main(args):
@@ -184,35 +238,7 @@ def main(args):
             data.extend(f.readlines())
 
     if args.attach_detach:
-        jsond = []
-        ad = find_attach_detach(data)
-        limit = args.limit if args.limit else len(ad)
-        if args.sort.upper() == 'RESDELTA':
-            sort = 'TIME'
-        else:
-            sort = args.sort.upper()
-        for entry in reversed(sorted(ad, key=lambda x: x[AD_VALS[sort]])):
-            if limit == 0:
-                break
-            elif args.json:
-                d = {}
-                for enum, val in AD_VALS.items():
-                    d[enum] = entry[val]
-                jsond.append(d)
-            elif args.pretty:
-                print()
-                for enum, val in sorted(AD_VALS.items(), key=lambda x: x[1]):
-                    print(enum, ":", entry[val])
-                print()
-            elif not args.quiet:
-                print()
-                print(*entry)
-                print()
-
-            limit -= 1
-        if jsond:
-            print(json.dumps(jsond))
-        sys.exit(0)
+        get_attach_detach(args, data)
 
     found = {}
 
@@ -244,21 +270,8 @@ def main(args):
                                                   res_match.group("payload")])
 
     found = found.values()
-    for f in args.filter:
-        k, v, operator = None, None, None
-        for operator in OPERATORS.keys():
-            sp = f.split(operator, 1)
-            if len(sp) == 2:
-                k, v = sp
-                break
-        if not k:
-            raise ValueError("No valid operator detected in {}".format(
-                args.filter))
-        k = k.strip().upper()
-        found = filter_func(found,
-                            TUP_VALS[k.upper()],
-                            v,
-                            OPERATORS_FUNC[operator])
+    if args.filter:
+        found = get_filtered(args.filter, found, TUP_VALS)
 
     orphans = []
     normies = []
