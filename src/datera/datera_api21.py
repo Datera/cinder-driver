@@ -859,6 +859,7 @@ class DateraApi(object):
         snapshot = {'id': str(uuid.uuid4()),
                     'volume_id': vol['id']}
         self._create_snapshot_2_1(snapshot)
+        self._update_metadata(vol, {'type': 'image'})
 
     def _image_accessible(self, volume, image_meta):
         # Determine if image is accessible by current project
@@ -951,14 +952,6 @@ class DateraApi(object):
                     connector.disconnect_volume(attach_info, attach_info)
                 except Exception:
                     pass
-
-    # ================
-    # = Volume Stats =
-    # ================
-
-    # =========
-    # = Login =
-    # =========
 
     # ===========
     # = Tenancy =
@@ -1141,3 +1134,22 @@ class DateraApi(object):
         return self._issue_api_request(
             "access_network_ip_pools/{}".format(pool),
             api_version=self.API_VERSION)['path']
+
+    # ============
+    # = Metadata =
+    # ============
+
+    def _get_metadata(self, volume):
+        tenant = self._create_tenant(volume)
+        url = datc.URL_TEMPLATES['ai_inst']().format(
+            datc._get_name(volume['id'])) + "/metadata"
+        return self._issue_api_request(url, api_version=self.API_VERSION,
+                                       tenant=tenant)['data']
+
+    def _update_metadata(self, volume, keys):
+        tenant = self._create_tenant(volume)
+        url = datc.URL_TEMPLATES['ai_inst']().format(
+            datc._get_name(volume['id'])) + "/metadata"
+        self._issue_api_request(
+            url, method='put', body=keys, api_version=self.API_VERSION,
+            tenant=tenant)
