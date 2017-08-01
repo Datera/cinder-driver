@@ -62,6 +62,12 @@ d_opts = [
                     "during volume provisioning\n"
                     "If set to anything else --> Datera tenant ID will be the "
                     "provided value"),
+    cfg.BoolOpt('datera_enable_image_cache',
+                default=False,
+                help="Set to True to enable Datera backend image caching"),
+    cfg.StrOpt('datera_image_cache_volume_type_id',
+               default=None,
+               help="Cinder volume type id to use for cached volumes"),
     cfg.BoolOpt('datera_disable_profiler',
                 default=False,
                 help="Set to True to disable profiling in the Datera driver"),
@@ -91,8 +97,9 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
         2.3.1 - Scalability bugfixes
         2.3.2 - Volume Placement, ACL multi-attach bugfix
         2.4.0 - Fast Retype Support
+        2.5.0 - Glance Image Caching, retyping/QoS bugfixes
     """
-    VERSION = '2.4.0'
+    VERSION = '2.5.0'
 
     CI_WIKI_NAME = "datera-ci"
 
@@ -121,6 +128,8 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
         self.api_cache = []
         self.api_timeout = 0
         self.do_profile = not self.configuration.datera_disable_profiler
+        self.image_cache = self.configuration.datera_enable_image_cache
+        self.image_type = self.configuration.datera_image_cache_volume_type_id
         self.thread_local = threading.local()
 
         backend_name = self.configuration.safe_get(
@@ -357,6 +366,16 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
 
         :param volume:       Cinder volume to unmanage
         """
+        pass
+
+    # ====================
+    # = Fast Image Clone =
+    # ====================
+
+    @datc._api_lookup
+    def clone_image(self, context, volume, image_location, image_meta,
+                    image_service):
+        """Clone an existing image volume."""
         pass
 
     # ================
