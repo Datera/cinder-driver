@@ -301,9 +301,11 @@ def _get_policies_for_volume_type(driver, volume_type):
 # = API Requests =
 # ================
 
-def _request(driver, connection_string, method, payload, header, cert_data):
+def _request(driver, connection_string, method, payload, header, cert_data,
+             sensitive):
     LOG.debug("Endpoint for Datera API call: %s", connection_string)
-    LOG.debug("Payload for Datera API call: %s", payload)
+    if not sensitive:
+        LOG.debug("Payload for Datera API call: %s", payload)
     try:
         response = getattr(requests, method)(connection_string,
                                              data=payload, headers=header,
@@ -359,7 +361,8 @@ def _handle_bad_status(driver,
                                    method,
                                    payload,
                                    header,
-                                   cert_data)
+                                   cert_data,
+                                   sensitive=sensitive)
             if resp.ok:
                 return response.json()
             elif resp.status_code != http_client.SERVICE_UNAVAILABLE:
@@ -444,7 +447,8 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
                                method,
                                payload,
                                header,
-                               cert_data)
+                               cert_data,
+                               sensitive=sensitive)
 
     data = response.json()
 
