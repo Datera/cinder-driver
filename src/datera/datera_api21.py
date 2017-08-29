@@ -273,7 +273,7 @@ class DateraApi(object):
             # Fallback to trying reasonable IP based guess
             else:
                 initiator_ip_pool_path = self._get_ip_pool_for_string_ip_2_1(
-                    connector['ip'])
+                    connector['ip'], tenant)
 
             ip_pool_url = datc.URL_TEMPLATES['si_inst'](
                 store_name).format(datc._get_name(volume['id']))
@@ -756,7 +756,7 @@ class DateraApi(object):
         # Check to make sure we're working with a valid volume type
         try:
             found = volume_types.get_volume_type(context, self.image_type)
-        except exception.VolumeTypeNotFound:
+        except (exception.VolumeTypeNotFound, exception.InvalidVolumeType):
             found = None
         if not found:
             msg = _("Invalid volume type: %s")
@@ -800,8 +800,8 @@ class DateraApi(object):
         self._create_cloned_volume_2_1(volume, src_vol)
         # Determine if we need to retype the newly created volume
         vtype_id = volume.get('volume_type_id')
-        vtype = volume_types.get_volume_type(context, vtype_id)
         if vtype_id and self.image_type and vtype_id != self.image_type:
+            vtype = volume_types.get_volume_type(context, vtype_id)
             LOG.debug("Retyping newly cloned volume from type: %s to type: %s",
                       self.image_type, vtype_id)
             diff, discard = volume_types.volume_types_diff(
@@ -1117,12 +1117,13 @@ class DateraApi(object):
     # = IP Pools =
     # ============
 
-    def _get_ip_pool_for_string_ip_2_1(self, ip):
+    def _get_ip_pool_for_string_ip_2_1(self, ip, tenant):
         """Takes a string ipaddress and return the ip_pool API object dict """
         pool = 'default'
         ip_obj = ipaddress.ip_address(six.text_type(ip))
         ip_pools = self._issue_api_request('access_network_ip_pools',
-                                           api_version=self.API_VERSION)
+                                           api_version=self.API_VERSION,
+                                           tenant=tenant)
         for ipdata in ip_pools['data']:
             for adata in ipdata['network_paths']:
                 if not adata.get('start_ip'):
@@ -1133,7 +1134,7 @@ class DateraApi(object):
                     pool = ipdata['name']
         return self._issue_api_request(
             "access_network_ip_pools/{}".format(pool),
-            api_version=self.API_VERSION)['path']
+            api_version=self.API_VERSION, tenant=tenant)['data']['path']
 
     # ============
     # = Metadata =
