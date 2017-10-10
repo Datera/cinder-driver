@@ -25,6 +25,7 @@ import eventlet
 import requests
 
 from oslo_log import log as logging
+from oslo_utils import encodeutils as eu
 from six.moves import http_client
 
 from cinder import context
@@ -422,8 +423,9 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
         protocol = 'https'
         cert_data = (client_cert, client_cert_key)
 
-    connection_string = '%s://%s:%s/v%s/%s' % (protocol, host, port,
-                                               api_version, resource_url)
+    connection_string = '%s://%s:%s/v%s/%s' % tuple(
+            eu.safe_decode(elem) for elem in (
+                protocol, host, port, api_version, resource_url))
 
     request_id = uuid.uuid4()
 
@@ -439,9 +441,9 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
                   {'tid': driver.thread_local.trace_id,
                    'rid': request_id,
                    'api': api_version,
-                   'url': resource_url,
+                   'url': eu.safe_decode(resource_url),
                    'method': method,
-                   'payload': payload,
+                   'payload': eu.safe_decode(payload),
                    'header': header})
     response = driver._request(connection_string,
                                method,
@@ -466,8 +468,8 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
                   {'tid': driver.thread_local.trace_id,
                    'rid': request_id,
                    'delta': timedelta,
-                   'url': response.url,
-                   'payload': payload,
+                   'url': eu.safe_decode(response.url),
+                   'payload': eu.safe_decode(payload),
                    'obj': vars(response)})
     if not response.ok:
         driver._handle_bad_status(response,
