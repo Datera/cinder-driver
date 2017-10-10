@@ -296,7 +296,7 @@ def _get_policies_for_resource(driver, resource):
 # ================
 
 def _request(driver, connection_string, method, payload, header, cert_data,
-             sensitive):
+             sensitive=False):
     LOG.debug("Endpoint for Datera API call: %s", connection_string)
     if not sensitive:
         LOG.debug("Payload for Datera API call: %s", payload)
