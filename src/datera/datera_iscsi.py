@@ -19,11 +19,9 @@ import uuid
 from eventlet.green import threading
 from oslo_config import cfg
 from oslo_log import log as logging
-import six
 
 from cinder import exception
 from cinder.i18n import _
-from cinder import utils
 from cinder.volume.drivers.san import san
 
 import cinder.volume.drivers.datera.datera_api2 as api2
@@ -73,7 +71,6 @@ CONF.import_opt('driver_use_ssl', 'cinder.volume.driver')
 CONF.register_opts(d_opts)
 
 
-@six.add_metaclass(utils.TraceWrapperWithABCMetaclass)
 class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
 
     """The OpenStack Datera Driver
@@ -111,8 +108,6 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
         self.datera_debug = self.configuration.datera_debug
         self.datera_api_versions = []
 
-        if self.datera_debug:
-            utils.setup_tracing(['method'])
         self.tenant_id = self.configuration.datera_tenant_id
         if self.tenant_id and self.tenant_id.lower() == 'none':
             self.tenant_id = None
