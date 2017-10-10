@@ -260,9 +260,20 @@ def _get_policies_for_resource(driver, resource):
         specs = {}
 
     # Set defaults:
-    policies = {k.lstrip('DF:'): str(v['default']) for (k, v)
-                in driver._init_vendor_properties()[0].items()}
-
+    policies = {
+        'acl_allow_all': False,
+        'round_robin': False,
+        'replica_count': 3,
+        'placement_mode': 'hybrid',
+        'template': '',
+        'default_storage_name': 'storage-1',
+        'default_volume_name': 'volume-1',
+        'write_bandwidth_max': 0,
+        'read_bandwidth_max': 0,
+        'total_bandwidth_max': 0,
+        'write_iops_max': 0,
+        'read_iops_max': 0,
+        'total_iops_max': 0}
     if volume_type:
         # Populate updated value
         for key, value in specs.items():
