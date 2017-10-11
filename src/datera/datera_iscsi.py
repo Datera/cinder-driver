@@ -28,6 +28,7 @@ from cinder.volume.drivers.san import san
 
 import cinder.volume.drivers.datera.datera_api2 as api2
 import cinder.volume.drivers.datera.datera_api21 as api21
+import cinder.volume.drivers.datera.datera_api22 as api22
 import cinder.volume.drivers.datera.datera_common as datc
 
 
@@ -80,7 +81,8 @@ CONF.register_opts(d_opts)
 
 
 @six.add_metaclass(utils.TraceWrapperWithABCMetaclass)
-class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi):
+class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
+                   api22.DateraApi):
 
     """The OpenStack Datera Driver
 
