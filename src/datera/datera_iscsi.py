@@ -100,8 +100,9 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         2.3.2 - Volume Placement, ACL multi-attach bugfix
         2.4.0 - Fast Retype Support
         2.5.0 - Glance Image Caching, retyping/QoS bugfixes
+        2.6.0 - Api 2.2 support
     """
-    VERSION = '2.5.0'
+    VERSION = '2.6.0'
 
     CI_WIKI_NAME = "datera-ci"
 

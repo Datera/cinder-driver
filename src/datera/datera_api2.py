@@ -32,6 +32,8 @@ import cinder.volume.drivers.datera.datera_common as datc
 
 LOG = logging.getLogger(__name__)
 
+API_VERSION = "2"
+
 
 class DateraApi(object):
 
@@ -84,7 +86,7 @@ class DateraApi(object):
             datc.URL_TEMPLATES['ai'](),
             'post',
             body=app_params,
-            api_version='2')
+            api_version=API_VERSION)
         self._update_qos(volume, policies)
 
     # =================
@@ -108,7 +110,7 @@ class DateraApi(object):
         app_inst = self._issue_api_request(
             datc.URL_TEMPLATES['ai_inst']().format(
                 datc._get_name(volume['id'])),
-            api_version='2')
+            api_version=API_VERSION)
         if app_inst['admin_state'] == 'online':
             reonline = True
             self._detach_volume_2(None, volume)
@@ -123,7 +125,7 @@ class DateraApi(object):
                 store_name, vol_name).format(app_inst),
             method='put',
             body=data,
-            api_version='2')
+            api_version=API_VERSION)
         # Online Volume, if it was online before
         if reonline:
             self._create_export_2(None, volume, None)
@@ -146,7 +148,8 @@ class DateraApi(object):
             'clone_src': src,
         }
         self._issue_api_request(
-            datc.URL_TEMPLATES['ai'](), 'post', body=data, api_version='2')
+            datc.URL_TEMPLATES['ai'](), 'post', body=data,
+            api_version=API_VERSION)
 
         if volume['size'] > src_vref['size']:
             self._extend_volume_2(volume, volume['size'])
@@ -162,7 +165,7 @@ class DateraApi(object):
             self._issue_api_request(datc.URL_TEMPLATES['ai_inst']().format(
                 app_inst),
                 method='delete',
-                api_version='2')
+                api_version=API_VERSION)
         except exception.NotFound:
             LOG.info("Tried to delete volume %s, but it was not found in the "
                      "Datera cluster. Continuing with delete.",
@@ -188,7 +191,7 @@ class DateraApi(object):
             'admin_state': 'online'
         }
         app_inst = self._issue_api_request(
-            url, method='put', body=data, api_version='2')
+            url, method='put', body=data, api_version=API_VERSION)
         storage_instances = app_inst["storage_instances"]
         si_names = list(storage_instances.keys())
 
@@ -236,10 +239,12 @@ class DateraApi(object):
         data = {
             'admin_state': 'online'
         }
-        self._issue_api_request(url, method='put', body=data, api_version='2')
+        self._issue_api_request(url, method='put', body=data,
+                                api_version=API_VERSION)
         # Check if we've already setup everything for this volume
         url = (datc.URL_TEMPLATES['si']().format(datc._get_name(volume['id'])))
-        storage_instances = self._issue_api_request(url, api_version='2')
+        storage_instances = self._issue_api_request(
+            url, api_version=API_VERSION)
         # Handle adding initiator to product if necessary
         # Then add initiator to ACL
         policies = self._get_policies_for_resource(volume)
@@ -255,7 +260,7 @@ class DateraApi(object):
             found = False
             initiator = connector['initiator']
             current_initiators = self._issue_api_request(
-                'initiators', api_version='2')
+                'initiators', api_version=API_VERSION)
             for iqn, values in current_initiators.items():
                 if initiator == iqn:
                     found = True
@@ -269,7 +274,7 @@ class DateraApi(object):
                                         method="post",
                                         body=data,
                                         conflict_ok=True,
-                                        api_version='2')
+                                        api_version=API_VERSION)
             # Create initiator group with initiator in it
             initiator_path = "/initiators/{}".format(initiator)
             initiator_group_path = "/initiator_groups/{}".format(
@@ -279,7 +284,7 @@ class DateraApi(object):
                                     method="post",
                                     body=ig_data,
                                     conflict_ok=True,
-                                    api_version='2')
+                                    api_version=API_VERSION)
             # Create ACL with initiator group as reference for each
             # storage_instance in app_instance
             # TODO(_alastor_): We need to avoid changing the ACLs if the
@@ -290,7 +295,7 @@ class DateraApi(object):
                     datc._get_name(volume['id']), si_name)
                 existing_acl = self._issue_api_request(acl_url,
                                                        method="get",
-                                                       api_version='2')
+                                                       api_version=API_VERSION)
                 data = {}
                 data['initiators'] = existing_acl['initiators']
                 data['initiator_groups'] = existing_acl['initiator_groups']
@@ -298,7 +303,7 @@ class DateraApi(object):
                 self._issue_api_request(acl_url,
                                         method="put",
                                         body=data,
-                                        api_version='2')
+                                        api_version=API_VERSION)
 
         if connector and connector.get('ip'):
             try:
@@ -306,7 +311,8 @@ class DateraApi(object):
                 if policies['ip_pool'] != 'default':
                     initiator_ip_pool_path = self._issue_api_request(
                         "access_network_ip_pools/{}".format(
-                            policies['ip_pool']), api_version='2')['path']
+                            policies['ip_pool']),
+                        api_version=API_VERSION)['path']
                 # Fallback to trying reasonable IP based guess
                 else:
                     initiator_ip_pool_path = self._get_ip_pool_for_string_ip(
@@ -318,7 +324,7 @@ class DateraApi(object):
                 self._issue_api_request(ip_pool_url,
                                         method="put",
                                         body=ip_pool_data,
-                                        api_version='2')
+                                        api_version=API_VERSION)
             except exception.DateraAPIException:
                 # Datera product 1.0 support
                 pass
@@ -339,7 +345,7 @@ class DateraApi(object):
         }
         try:
             self._issue_api_request(url, method='put', body=data,
-                                    api_version='2')
+                                    api_version=API_VERSION)
         except exception.NotFound:
             msg = ("Tried to detach volume %s, but it was not found in the "
                    "Datera cluster. Continuing with detach.")
@@ -352,7 +358,7 @@ class DateraApi(object):
         # TODO(_alastor_) when we get a /initiators/:initiator/acl_policies
         # endpoint use that instead of this monstrosity
         initiator_groups = self._issue_api_request("initiator_groups",
-                                                   api_version='2')
+                                                   api_version=API_VERSION)
         for ig, igdata in initiator_groups.items():
             if initiator_path in igdata['members']:
                 LOG.debug("Found initiator_group: %s for initiator: %s",
@@ -370,21 +376,21 @@ class DateraApi(object):
             store_name) + "/acl_policy").format(datc._get_name(volume['id']))
         try:
             initiator_group = self._issue_api_request(
-                acl_url, api_version='2')['initiator_groups'][0]
+                acl_url, api_version=API_VERSION)['initiator_groups'][0]
             initiator_iqn_path = self._issue_api_request(
                 initiator_group.lstrip("/"))["members"][0]
             # Clear out ACL and delete initiator group
             self._issue_api_request(acl_url,
                                     method="put",
                                     body={'initiator_groups': []},
-                                    api_version='2')
+                                    api_version=API_VERSION)
             self._issue_api_request(initiator_group.lstrip("/"),
                                     method="delete",
-                                    api_version='2')
+                                    api_version=API_VERSION)
             if not self._check_for_acl_2(initiator_iqn_path):
                 self._issue_api_request(initiator_iqn_path.lstrip("/"),
                                         method="delete",
-                                        api_version='2')
+                                        api_version=API_VERSION)
         except (IndexError, exception.NotFound):
             LOG.debug("Did not find any initiator groups for volume: %s",
                       volume)
@@ -406,7 +412,7 @@ class DateraApi(object):
             'uuid': snapshot['id'],
         }
         snap = self._issue_api_request(url, method='post', body=snap_params,
-                                       api_version='2')
+                                       api_version=API_VERSION)
         snapu = "/".join((url, snap['timestamp']))
         self._snap_poll(snapu)
 
@@ -423,7 +429,7 @@ class DateraApi(object):
             store_name, vol_name) + '/snapshots'
         snapu = snap_temp.format(datc._get_name(snapshot['volume_id']))
         snapshots = self._issue_api_request(snapu, method='get',
-                                            api_version='2')
+                                            api_version=API_VERSION)
 
         try:
             for ts, snap in snapshots.items():
@@ -431,7 +437,7 @@ class DateraApi(object):
                     url_template = snapu + '/{}'
                     url = url_template.format(ts)
                     self._issue_api_request(url, method='delete',
-                                            api_version='2')
+                                            api_version=API_VERSION)
                     break
             else:
                 raise exception.NotFound
@@ -453,7 +459,7 @@ class DateraApi(object):
             store_name, vol_name) + '/snapshots'
         snapu = snap_temp.format(datc._get_name(snapshot['volume_id']))
         snapshots = self._issue_api_request(snapu, method='get',
-                                            api_version='2')
+                                            api_version=API_VERSION)
         for ts, snap in snapshots.items():
             if snap['uuid'] == snapshot['id']:
                 found_ts = ts
@@ -478,7 +484,7 @@ class DateraApi(object):
             datc.URL_TEMPLATES['ai'](),
             method='post',
             body=app_params,
-            api_version='2')
+            api_version=API_VERSION)
 
         if (volume['size'] > snapshot['volume_size']):
             self._extend_volume_2(volume, volume['size'])
@@ -500,7 +506,7 @@ class DateraApi(object):
                   existing_ref)
         data = {'name': datc._get_name(volume['id'])}
         self._issue_api_request(datc.URL_TEMPLATES['ai_inst']().format(
-            app_inst_name), method='put', body=data, api_version='2')
+            app_inst_name), method='put', body=data, api_version=API_VERSION)
 
     # ===================
     # = Manage Get Size =
@@ -515,7 +521,7 @@ class DateraApi(object):
         app_inst_name, si_name, vol_name = existing_ref.split(":")
         app_inst = self._issue_api_request(
             datc.URL_TEMPLATES['ai_inst']().format(app_inst_name),
-            api_version='2')
+            api_version=API_VERSION)
         return self._get_size_2(volume, app_inst, si_name, vol_name)
 
     def _get_size_2(self, volume, app_inst=None, si_name=None, vol_name=None):
@@ -543,7 +549,7 @@ class DateraApi(object):
                                   sort_keys, sort_dirs):
         LOG.debug("Listing manageable Datera volumes")
         app_instances = self._issue_api_request(
-            datc.URL_TEMPLATES['ai'](), api_version='2').values()
+            datc.URL_TEMPLATES['ai'](), api_version=API_VERSION).values()
 
         results = []
 
@@ -596,7 +602,7 @@ class DateraApi(object):
             datc._get_name(volume['id'])),
             method='put',
             body=data,
-            api_version='2')
+            api_version=API_VERSION)
 
     # ================
     # = Volume Stats =
@@ -607,7 +613,8 @@ class DateraApi(object):
             try:
                 LOG.debug("Updating cluster stats info.")
 
-                results = self._issue_api_request('system', api_version='2')
+                results = self._issue_api_request(
+                    'system', api_version=API_VERSION)
 
                 if 'uuid' not in results:
                     LOG.error(
@@ -656,8 +663,9 @@ class DateraApi(object):
 
         try:
             LOG.debug('Getting Datera auth token.')
-            results = self._issue_api_request('login', 'put', body=body,
-                                              sensitive=True, api_version='2')
+            results = self._issue_api_request(
+                'login', 'put', body=body, sensitive=True,
+                api_version=API_VERSION)
             self.datera_api_token = results['key']
         except exception.NotAuthorized:
             with excutils.save_and_reraise_exception():
@@ -677,7 +685,7 @@ class DateraApi(object):
         poll = True
         while poll and not retry >= TIMEOUT:
             retry += 1
-            snap = self._issue_api_request(url, api_version='2')
+            snap = self._issue_api_request(url, api_version=API_VERSION)
             if snap['op_state'] == 'available':
                 poll = False
             else:
@@ -697,7 +705,7 @@ class DateraApi(object):
         poll = True
         while poll and not retry >= TIMEOUT:
             retry += 1
-            si = self._issue_api_request(check_url, api_version='2')
+            si = self._issue_api_request(check_url, api_version=API_VERSION)
             if si['op_state'] == 'available':
                 poll = False
             else:
@@ -715,7 +723,7 @@ class DateraApi(object):
         pool = 'default'
         ip_obj = ipaddress.ip_address(six.text_type(ip))
         ip_pools = self._issue_api_request('access_network_ip_pools',
-                                           api_version='2')
+                                           api_version=API_VERSION)
         for ip_pool, ipdata in ip_pools.items():
             for access, adata in ipdata['network_paths'].items():
                 if not adata.get('start_ip'):
@@ -725,7 +733,8 @@ class DateraApi(object):
                 if ip_obj in pool_if.network:
                     pool = ip_pool
         return self._issue_api_request(
-            "access_network_ip_pools/{}".format(pool), api_version='2')['path']
+            "access_network_ip_pools/{}".format(pool),
+            api_version=API_VERSION)['path']
 
     # =============
     # = Templates =
@@ -738,7 +747,8 @@ class DateraApi(object):
         template = policies['template']
         if template:
             result = self._issue_api_request(
-                datc.URL_TEMPLATES['at']().format(template), api_version='2')
+                datc.URL_TEMPLATES['at']().format(template),
+                api_version=API_VERSION)
             sname, st = list(result['storage_templates'].items())[0]
             vname = list(st['volume_templates'].keys())[0]
         return sname, vname
@@ -762,4 +772,4 @@ class DateraApi(object):
             fpolicies = dict(filter(lambda _v: _v[1] > 0, fpolicies.items()))
             if fpolicies:
                 self._issue_api_request(url, 'post', body=fpolicies,
-                                        api_version='2')
+                                        api_version=API_VERSION)
