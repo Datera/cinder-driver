@@ -3,15 +3,23 @@ from __future__ import unicode_literals, division, print_function
 
 import argparse
 import json
-import sys
 import re
+import sys
+
+import arrow
+
 
 try:
     import text_histogram
 except ImportError:
     text_histogram = None
 
-VERSION = "v1.0.0"
+"""
+VERSION HISTORY:
+    1.0.0 -- Initial sreq.py version
+    1.0.1 -- Addition of timestamp filtering
+"""
+VERSION = "v1.0.1"
 
 USAGE = """
 
@@ -123,14 +131,36 @@ OPERATORS = {"=": "X equals Y",
              "<": "X less than Y",
              ">=": "X greather than or equals Y",
              "<=": "X less than or equals Y",
-             "##": "X contains Y"}
+             "##": "X contains Y",
+             "@@": "Timestamp X >= Timestamp Y",
+             "**": "Timestamp X <= Timestamp Y"}
+
+
+def timestamp_filter_before(x, y):
+    tx, ty = arrow.get(x), arrow.get(y)
+    return tx <= ty
+
+
+def timestamp_filter_after(x, y):
+    tx, ty = arrow.get(x), arrow.get(y)
+    return tx >= ty
+
 
 OPERATORS_FUNC = {"=": lambda x, y: x == y,
                   ">": lambda x, y: float(x) > float(y),
                   "<": lambda x, y: float(x) < float(y),
                   ">=": lambda x, y: float(x) >= float(y),
                   "<=": lambda x, y: float(x) <= float(y),
-                  "##": lambda x, y: y in x}
+                  "##": lambda x, y: y in x,
+                  "@@": timestamp_filter_after,
+                  "**": timestamp_filter_before}
+
+
+def _sort_helper(x):
+    try:
+        return x[TUP_VALS[args.sort.upper()]]
+    except IndexError:
+        return x[0]
 
 
 def filter_func(found, loc, val, operator):
@@ -218,36 +248,30 @@ def get_attach_detach(args, data):
     sys.exit(0)
 
 
-def main(args):
-    if args.version:
-        print("SREQ\n----\nThe Datera Cinder Driver Request Sorter\n",
-              VERSION)
-        sys.exit(0)
-    if args.print_enums:
-        for elem in sorted(TUP_VALS.keys()):
-            print(str("{:>10}: {}".format(elem, TUP_DESCRIPTIONS[elem])))
-        sys.exit(0)
-    if args.print_operators:
-        for k, v in sorted(OPERATORS.items()):
-            print(str("{:>10}: {}".format(k, v)))
-        sys.exit(0)
-    files = args.logfiles
-    data = []
+# Turns multiple files into one big file generator
+def gen_file_data(files):
     for file in files:
         with open(file) as f:
-            data.extend(f.readlines())
+            for line in f:
+                yield line
 
-    if args.attach_detach:
-        get_attach_detach(args, data)
 
+# Generator for log block data
+def gen_log_blocks(data):
+    prev = None
+    for line in data:
+        if line.startswith("Datera Trace"):
+            found = [prev, line]
+            for _ in range(6):
+                found.append(next(data))
+            yield "".join(found).replace("\r", "")
+        prev = line
+
+
+def get_match_dict(data):
     found = {}
 
-    log_blocks = []
-    for index, line in enumerate(data):
-        if line.startswith("Datera Trace"):
-            log_blocks.append(
-                "".join(data[index - 1: index + 6]).replace("\r", ""))
-
+    log_blocks = gen_log_blocks(data)
     for logb in log_blocks:
         req_match = DREQ.match(logb)
         if req_match:
@@ -269,10 +293,10 @@ def main(args):
                                                   res_match.group("url"),
                                                   res_match.group("payload")])
 
-    found = found.values()
-    if args.filter:
-        found = get_filtered(args.filter, found, TUP_VALS)
+    return found
 
+
+def orphan_filter(found):
     orphans = []
     normies = []
     for entry in found.values() if type(found) == dict else found:
@@ -286,15 +310,13 @@ def main(args):
     else:
         result = normies
 
-    def _helper(x):
-        try:
-            return x[TUP_VALS[args.sort.upper()]]
-        except IndexError:
-            return x[0]
+    return result
 
+
+def print_results(result):
     limit = args.limit if args.limit else len(result)
     jsond = []
-    for entry in reversed(sorted(result, key=_helper)):
+    for entry in reversed(sorted(result, key=_sort_helper)):
         if limit == 0:
             break
         elif args.json:
@@ -315,41 +337,81 @@ def main(args):
             print(*entry)
             print()
         limit -= 1
-
     if jsond:
         print(json.dumps(jsond))
-    lfound = None
+
+
+def print_stats(result):
+    lfound = [float(elem[TUP_VALS["RESDELTA"]]) for elem in result]
+    if args.limit:
+        lfound = lfound[:args.limit]
+    print("\n=========================\n")
+    print("Count:", len(lfound))
+
+    print("Highest:", max(lfound))
+    print("Lowest:", min(lfound))
+
+    mean = round(sum(lfound) / len(lfound), 3)
+    print("Mean:", mean)
+
+    rfound = [round(elem, 2) for elem in lfound]
+    print("Mode:", max(set(rfound), key=lambda x: rfound.count(x)))
+
+    quotient, remainder = divmod(len(lfound), 2)
+    if remainder:
+        median = sorted(lfound)[quotient]
+    else:
+        median = sum(sorted(lfound)[quotient - 1:quotient + 1]) / 2
+    print("Median:", median)
+    print()
+    print()
+
+    if text_histogram:
+        hg = text_histogram.histogram
+        hg(lfound, buckets=5, calc_msvd=False)
+        print()
+        print()
+
+
+def print_operators():
+    for k, v in sorted(OPERATORS.items()):
+        print(str("{:>10}: {}".format(k, v)))
+
+
+def print_enums():
+    for elem in sorted(TUP_VALS.keys()):
+        print(str("{:>10}: {}".format(elem, TUP_DESCRIPTIONS[elem])))
+
+
+def main(args):
+    if args.version:
+        print("SREQ\n----\nThe Datera Cinder Driver Request Sorter\n",
+              VERSION)
+        sys.exit(0)
+    if args.print_enums:
+        print_enums()
+        sys.exit(0)
+    if args.print_operators:
+        print_operators()
+        sys.exit(0)
+    files = args.logfiles
+
+    data = gen_file_data(files)
+    if args.attach_detach:
+        get_attach_detach(args, data)
+        sys.exit(0)
+
+    found = get_match_dict(data).values()
+
+    if args.filter:
+        found = get_filtered(args.filter, found, TUP_VALS)
+
+    result = orphan_filter(found)
+
+    print_results(result)
 
     if args.stats:
-        lfound = [float(elem[TUP_VALS["RESDELTA"]]) for elem in result]
-        if args.limit:
-            lfound = lfound[:args.limit]
-        print("\n=========================\n")
-        print("Count:", len(lfound))
-
-        print("Highest:", max(lfound))
-        print("Lowest:", min(lfound))
-
-        mean = round(sum(lfound) / len(lfound), 3)
-        print("Mean:", mean)
-
-        rfound = [round(elem, 2) for elem in lfound]
-        print("Mode:", max(set(rfound), key=lambda x: rfound.count(x)))
-
-        quotient, remainder = divmod(len(lfound), 2)
-        if remainder:
-            median = sorted(lfound)[quotient]
-        else:
-            median = sum(sorted(lfound)[quotient - 1:quotient + 1]) / 2
-        print("Median:", median)
-        print()
-        print()
-
-        if text_histogram:
-            hg = text_histogram.histogram
-            hg(lfound, buckets=5, calc_msvd=False)
-            print()
-            print()
+        print_stats(result)
     sys.exit(0)
 
 
