@@ -778,15 +778,25 @@ class DateraApi(object):
         cached = self._vol_exists_2_2(src_vol)
 
         if cached:
+            metadata = self._get_metadata(src_vol)
             # Check to see if the master image has changed since we created
             # The cached version
             ts = self._get_vol_timestamp(src_vol)
             mts = time.mktime(image_meta['updated_at'].timetuple())
             LOG.debug("Original image timestamp: %s, cache timestamp %s",
                       mts, ts)
+            # If the image is created by Glance, we'll trust that even if the
+            # timestamps don't match up, the data is ok to clone as it's not
+            # managed by this driver
+            if metadata.get('type') == 'image':
+                LOG.debug("Found Glance volume-backed image for %s",
+                          src_vol['id'])
             # If the master image time is greater than the volume creation
-            # time, we invalidate the cache and delete the volume
-            if mts > ts:
+            # time, we invalidate the cache and delete the volume.  The
+            # exception is if the cached volume was created by Glance.  We
+            # NEVER want to delete this volume.  It's annotated with
+            # 'type': 'image' in the metadata, so we'll check for that
+            elif mts > ts and metadata.get('type') != 'image':
                 LOG.debug("Cache is older than original image, deleting cache")
                 cached = False
                 self._delete_volume_2_2(src_vol)
@@ -860,7 +870,7 @@ class DateraApi(object):
         snapshot = {'id': str(uuid.uuid4()),
                     'volume_id': vol['id']}
         self._create_snapshot_2_2(snapshot)
-        self._update_metadata(vol, {'type': 'image'})
+        self._update_metadata(vol, {'type': 'cached_image'})
 
     def _image_accessible(self, volume, image_meta):
         # Determine if image is accessible by current project

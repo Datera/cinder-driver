@@ -101,8 +101,9 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         2.4.0 - Fast Retype Support
         2.5.0 - Glance Image Caching, retyping/QoS bugfixes
         2.6.0 - Api 2.2 support
+        2.6.1 - Glance interoperability fix
     """
-    VERSION = '2.6.0'
+    VERSION = '2.6.1'
 
     CI_WIKI_NAME = "datera-ci"
 
