@@ -340,8 +340,23 @@ class DateraApi(object):
                         acl_url, method="get", api_version=API_VERSION,
                         tenant=tenant)['data']
                 data = {}
-                data['initiators'] = existing_acl['initiators']
-                data['initiator_groups'] = existing_acl['initiator_groups']
+                # Grabbing only the 'path' key from each existing initiator
+                # within the existing acl. eacli --> existing acl initiator
+                eacli = []
+                for acl in existing_acl['initiators']:
+                    nacl = {}
+                    nacl['path'] = acl['path']
+                    eacli.append(nacl)
+                data['initiators'] = eacli
+                # Grabbing only the 'path' key from each existing initiator
+                # group within the existing acl. eaclig --> existing
+                # acl initiator group
+                eaclig = []
+                for acl in existing_acl['initiator_groups']:
+                    nacl = {}
+                    nacl['path'] = acl['path']
+                    eaclig.append(nacl)
+                data['initiator_groups'] = eaclig
                 data['initiator_groups'].append({"path": initiator_group_path})
                 self._issue_api_request(acl_url,
                                         method="put",
@@ -778,15 +793,25 @@ class DateraApi(object):
         cached = self._vol_exists_2_1(src_vol)
 
         if cached:
+            metadata = self._get_metadata(src_vol)
             # Check to see if the master image has changed since we created
             # The cached version
             ts = self._get_vol_timestamp(src_vol)
             mts = time.mktime(image_meta['updated_at'].timetuple())
             LOG.debug("Original image timestamp: %s, cache timestamp %s",
                       mts, ts)
+            # If the image is created by Glance, we'll trust that even if the
+            # timestamps don't match up, the data is ok to clone as it's not
+            # managed by this driver
+            if metadata.get('type') == 'image':
+                LOG.debug("Found Glance volume-backed image for %s",
+                          src_vol['id'])
             # If the master image time is greater than the volume creation
-            # time, we invalidate the cache and delete the volume
-            if mts > ts:
+            # time, we invalidate the cache and delete the volume.  The
+            # exception is if the cached volume was created by Glance.  We
+            # NEVER want to delete this volume.  It's annotated with
+            # 'type': 'image' in the metadata, so we'll check for that
+            elif mts > ts and metadata.get('type') != 'image':
                 LOG.debug("Cache is older than original image, deleting cache")
                 cached = False
                 self._delete_volume_2_1(src_vol)
@@ -860,7 +885,7 @@ class DateraApi(object):
         snapshot = {'id': str(uuid.uuid4()),
                     'volume_id': vol['id']}
         self._create_snapshot_2_1(snapshot)
-        self._update_metadata(vol, {'type': 'image'})
+        self._update_metadata(vol, {'type': 'cached_image'})
 
     def _image_accessible(self, volume, image_meta):
         # Determine if image is accessible by current project
@@ -1097,12 +1122,21 @@ class DateraApi(object):
         url = url.format(datc._get_name(resource['id']))
         type_id = resource.get('volume_type_id', None)
         if type_id is not None:
+            iops_per_gb = int(policies.get('iops_per_gb', 0))
+            bw_per_gb = int(policies.get('bw_per_gb', 0))
             # Filter for just QOS policies in result. All of their keys
             # should end with "max"
             fpolicies = {k: int(v) for k, v in
                          policies.items() if k.endswith("max")}
             # Filter all 0 values from being passed
             fpolicies = dict(filter(lambda _v: _v[1] > 0, fpolicies.items()))
+            # Calculate and set iops/gb and bw/gb, but only if
+            # total_iops_max and total_bw_max aren't set since they take
+            # priority
+            if iops_per_gb and 'total_iops_max' not in fpolicies:
+                fpolicies['total_iops_max'] = iops_per_gb * resource['size']
+            if bw_per_gb:
+                fpolicies['total_bw_max'] = bw_per_gb * resource['size']
             if fpolicies:
                 try:
                     self._issue_api_request(
