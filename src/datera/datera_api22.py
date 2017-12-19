@@ -340,8 +340,22 @@ class DateraApi(object):
                         acl_url, method="get", api_version=API_VERSION,
                         tenant=tenant)['data']
                 data = {}
-                data['initiators'] = existing_acl['initiators']
-                data['initiator_groups'] = existing_acl['initiator_groups']
+                # Grabbing only the 'path' key from each existing initiator
+                # within the existing acl
+                eacli = []
+                for acl in existing_acl['initiators']:
+                    nacl = {}
+                    nacl['path'] = acl['path']
+                    eacli.append(nacl)
+                data['initiators'] = eacli
+                # Grabbing only the 'path' key from each existing initiator
+                # group within the existing acl
+                eaclig = []
+                for acl in existing_acl['initiator_groups']:
+                    nacl = {}
+                    nacl['path'] = acl['path']
+                    eaclig.append(nacl)
+                data['initiator_groups'] = eaclig
                 data['initiator_groups'].append({"path": initiator_group_path})
                 self._issue_api_request(acl_url,
                                         method="put",
@@ -1107,12 +1121,21 @@ class DateraApi(object):
         url = url.format(datc._get_name(resource['id']))
         type_id = resource.get('volume_type_id', None)
         if type_id is not None:
+            iops_per_gb = int(policies.get('iops_per_gb', 0))
+            bw_per_gb = int(policies.get('bw_per_gb', 0))
             # Filter for just QOS policies in result. All of their keys
             # should end with "max"
             fpolicies = {k: int(v) for k, v in
                          policies.items() if k.endswith("max")}
             # Filter all 0 values from being passed
             fpolicies = dict(filter(lambda _v: _v[1] > 0, fpolicies.items()))
+            # Calculate and set iops/gb and bw/gb, but only if
+            # total_iops_max and total_bw_max aren't set since they take
+            # priority
+            if iops_per_gb and 'total_iops_max' not in fpolicies:
+                fpolicies['total_iops_max'] = iops_per_gb * resource['size']
+            if bw_per_gb:
+                fpolicies['total_bw_max'] = bw_per_gb * resource['size']
             if fpolicies:
                 try:
                     self._issue_api_request(

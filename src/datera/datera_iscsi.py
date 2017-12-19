@@ -72,6 +72,16 @@ d_opts = [
     cfg.BoolOpt('datera_disable_profiler',
                 default=False,
                 help="Set to True to disable profiling in the Datera driver"),
+    cfg.DictOpt('datera_volume_type_defaults',
+                default={},
+                help="Settings here will be used as volume-type defaults if "
+                     "the volume-type setting is not provided.  This can be "
+                     "used, for example, to set a very low total_iops_max "
+                     "value if none is specified in the volume-type to "
+                     "prevent accidental overusage.  Options are specified "
+                     "via the following format, WITHOUT ANY 'DF:' PREFIX: "
+                     "'datera_volume_type_defaults="
+                     "iops_per_gb:100,bandwidth_per_gb:200...etc'.")
 ]
 
 
@@ -102,8 +112,9 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         2.5.0 - Glance Image Caching, retyping/QoS bugfixes
         2.6.0 - Api 2.2 support
         2.6.1 - Glance interoperability fix
+        2.7.0 - IOPS/GB and BW/GB settings, driver level overrides
     """
-    VERSION = '2.6.1'
+    VERSION = '2.7.0'
 
     CI_WIKI_NAME = "datera-ci"
 
@@ -126,6 +137,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         if self.datera_debug:
             utils.setup_tracing(['method'])
         self.tenant_id = self.configuration.datera_tenant_id
+        self.defaults = self.configuration.datera_volume_type_defaults
         if self.tenant_id and self.tenant_id.lower() == 'none':
             self.tenant_id = None
         self.api_check = time.time()
@@ -464,8 +476,38 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
 
         prefix: DF --> Datera Fabric
         """
+        LOG.debug("Using the following volume-type defaults: %s",
+                  self.defaults)
 
         properties = {}
+
+        self._set_property(
+            properties,
+            "DF:iops_per_gb",
+            "Datera IOPS Per GB Setting",
+            _("Setting this value will calculate IOPS for each volume of "
+              "this type based on their size.  Eg. A setting of 100 will "
+              "give a 1 GB volume 100 IOPS, but a 10 GB volume 1000 IOPS. "
+              "A setting of '0' is unlimited.  This value is applied to "
+              "total_iops_max and will be overridden by total_iops_max if "
+              "set."),
+            "integer",
+            minimum=0,
+            default=int(self.defaults.get('iops_per_gb', 0)))
+
+        self._set_property(
+            properties,
+            "DF:bandwidth_per_gb",
+            "Datera Bandwidth Per GB Setting",
+            _("Setting this value will calculate bandwidth for each volume of "
+              "this type based on their size in KiB/s.  Eg. A setting of 100 "
+              "will give a 1 GB volume 100 KiB/s bandwidth, but a 10 GB "
+              "volume 1000 KiB/s bandwidth. A setting of '0' is unlimited. "
+              "This value is applied to total_bandwidth_max and will be "
+              "overridden by total_bandwidth_max if set."),
+            "integer",
+            minimum=0,
+            default=int(self.defaults.get('bandwidth_per_gb', 0)))
 
         self._set_property(
             properties,
@@ -475,7 +517,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
               "'all_flash' for all-flash-replica placement, "
               "'hybrid' for hybrid placement"),
             "string",
-            default="hybrid")
+            default=self.defaults.get('placement_mode', 'hybrid'))
 
         self._set_property(
             properties,
@@ -483,7 +525,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
             "Datera Round Robin Portals",
             _("True to round robin the provided portals for a target"),
             "boolean",
-            default=False)
+            default="True" == self.defaults.get('round_robin', "False"))
 
         if self.configuration.get('datera_debug_replica_count_override'):
             replica_count = 1
@@ -497,7 +539,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
               "increased once volume is created"),
             "integer",
             minimum=1,
-            default=replica_count)
+            default=int(self.defaults.get('replica_count', replica_count)))
 
         self._set_property(
             properties,
@@ -506,7 +548,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
             _("True to set acl 'allow_all' on volumes created.  Cannot be "
               "changed on volume once set"),
             "boolean",
-            default=False)
+            default="True" == self.defaults.get('acl_allow_all', "False"))
 
         self._set_property(
             properties,
@@ -514,7 +556,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
             "Datera IP Pool",
             _("Specifies IP pool to use for volume"),
             "string",
-            default="default")
+            default=self.defaults.get('ip_pool', 'default'))
 
         self._set_property(
             properties,
@@ -522,7 +564,23 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
             "Datera Template",
             _("Specifies Template to use for volume provisioning"),
             "string",
-            default="")
+            default=self.defaults.get('template', ''))
+
+        self._set_property(
+            properties,
+            "DF:default_storage_name",
+            "Datera Default Storage Instance Name",
+            _("The name to use for storage instances created"),
+            "string",
+            default=self.defaults.get('default_storage_name', "storage-1"))
+
+        self._set_property(
+            properties,
+            "DF:default_volume_name",
+            "Datera Default Volume Name",
+            _("The name to use for volumes created"),
+            "string",
+            default=self.defaults.get('default_volume_name', "volume-1"))
 
         # ###### QoS Settings ###### #
         self._set_property(
@@ -533,23 +591,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
               "use 0 for unlimited"),
             "integer",
             minimum=0,
-            default=0)
-
-        self._set_property(
-            properties,
-            "DF:default_storage_name",
-            "Datera Default Storage Instance Name",
-            _("The name to use for storage instances created"),
-            "string",
-            default="storage-1")
-
-        self._set_property(
-            properties,
-            "DF:default_volume_name",
-            "Datera Default Volume Name",
-            _("The name to use for volumes created"),
-            "string",
-            default="volume-1")
+            default=int(self.defaults.get('read_bandwidth_max', 0)))
 
         self._set_property(
             properties,
@@ -559,7 +601,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
               "use 0 for unlimited"),
             "integer",
             minimum=0,
-            default=0)
+            default=int(self.defaults.get('write_bandwidth_max', 0)))
 
         self._set_property(
             properties,
@@ -569,7 +611,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
               "use 0 for unlimited"),
             "integer",
             minimum=0,
-            default=0)
+            default=int(self.defaults.get('total_bandwidth_max', 0)))
 
         self._set_property(
             properties,
@@ -579,7 +621,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
               "use 0 for unlimited"),
             "integer",
             minimum=0,
-            default=0)
+            default=int(self.defaults.get('read_iops_max', 0)))
 
         self._set_property(
             properties,
@@ -589,7 +631,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
               "use 0 for unlimited"),
             "integer",
             minimum=0,
-            default=0)
+            default=int(self.defaults.get('write_iops_max', 0)))
 
         self._set_property(
             properties,
@@ -599,7 +641,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
               "use 0 for unlimited"),
             "integer",
             minimum=0,
-            default=0)
+            default=int(self.defaults.get('total_iops_max', 0)))
         # ###### End QoS Settings ###### #
 
         return properties, 'DF'
