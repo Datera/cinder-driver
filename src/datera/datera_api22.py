@@ -341,7 +341,7 @@ class DateraApi(object):
                         tenant=tenant)['data']
                 data = {}
                 # Grabbing only the 'path' key from each existing initiator
-                # within the existing acl
+                # within the existing acl. eacli --> existing acl initiator
                 eacli = []
                 for acl in existing_acl['initiators']:
                     nacl = {}
@@ -349,7 +349,8 @@ class DateraApi(object):
                     eacli.append(nacl)
                 data['initiators'] = eacli
                 # Grabbing only the 'path' key from each existing initiator
-                # group within the existing acl
+                # group within the existing acl. eaclig --> existing
+                # acl initiator group
                 eaclig = []
                 for acl in existing_acl['initiator_groups']:
                     nacl = {}
