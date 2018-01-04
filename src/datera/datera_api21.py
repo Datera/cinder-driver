@@ -581,7 +581,7 @@ class DateraApi(object):
                     volume['volume_type_id'], new_type)
 
             tenant = self._create_tenant(volume)
-            self._update_qos_2_1(volume, new_pol, tenant)
+            self._update_qos_2_1(volume, new_pol, tenant, clear_old=True)
             vol_params = (
                 {
                     'placement_mode': new_pol['placement_mode'],
@@ -1115,7 +1115,7 @@ class DateraApi(object):
     # = QoS =
     # =======
 
-    def _update_qos_2_1(self, resource, policies, tenant):
+    def _update_qos_2_1(self, resource, policies, tenant, clear_old=False):
         url = datc.URL_TEMPLATES['vol_inst'](
             policies['default_storage_name'],
             policies['default_volume_name']) + '/performance_policy'
@@ -1137,13 +1137,14 @@ class DateraApi(object):
                 fpolicies['total_iops_max'] = iops_per_gb * resource['size']
             if bw_per_gb:
                 fpolicies['total_bw_max'] = bw_per_gb * resource['size']
-            if fpolicies:
+            if fpolicies or clear_old:
                 try:
                     self._issue_api_request(
                         url, 'delete', api_version=API_VERSION,
                         tenant=tenant)
                 except exception.NotFound:
                     LOG.debug("No existing performance policy found")
+            if fpolicies:
                 self._issue_api_request(
                     url, 'post', body=fpolicies, api_version=API_VERSION,
                     tenant=tenant)
