@@ -271,19 +271,19 @@ def _get_policies_for_volume_type(driver, volume_type):
                 in driver._init_vendor_properties()[0].items()}
 
     if volume_type:
-        # Populate updated value
-        for key, value in specs.items():
-            if ':' in key:
-                fields = key.split(':')
-                key = fields[1]
-                policies[key] = value
 
         qos_specs_id = volume_type.get('qos_specs_id')
         if qos_specs_id is not None:
             ctxt = context.get_admin_context()
             qos_kvs = qos_specs.get_qos_specs(ctxt, qos_specs_id)['specs']
             if qos_kvs:
-                policies.update(qos_kvs)
+                specs.update(qos_kvs)
+        # Populate updated value
+        for key, value in specs.items():
+            if ':' in key:
+                fields = key.split(':')
+                key = fields[1]
+                policies[key] = value
     # Cast everything except booleans int that can be cast
     for k, v in policies.items():
         # Handle String Boolean case

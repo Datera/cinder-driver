@@ -113,8 +113,9 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         2.6.0 - Api 2.2 support
         2.6.1 - Glance interoperability fix
         2.7.0 - IOPS/GB and BW/GB settings, driver level overrides
+        2.7.1 - Allowing DF: QoS Spec prefix
     """
-    VERSION = '2.7.0'
+    VERSION = '2.7.1'
 
     CI_WIKI_NAME = "datera-ci"
 
