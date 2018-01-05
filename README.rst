@@ -1,169 +1,49 @@
-=======
+========================
 Datera Cinder Repository
-=======
+========================
 
-------
-Datera Cinder Volume Driver
-------
+------------------------------------
+Datera Volume Driver Version History
+------------------------------------
 
-.. list-table:: Datera Volume Driver Versions
+.. list-table:: Version History for Datera Volume Driver
    :header-rows: 1
    :class: config-ref-table
 
-   * - OpenStack Release
-     - Driver Branch Name
-     - Driver Version
-     - Additional Capabilities Introduced
-     - Supported Datera Product Versions
-     - URL
-   * - Master
-     - master
-     - 2.4.0
-     - Fast Retype
-     - 1.0, 1.1, 2.1, 2.2
-     - N/A
-   * - Ocata
-     - ocata-v2.3.2
-     - 2.3.2
-     - Scalability bugfixes, Volume Placement, ACL multi-attach bugfix
-     - 1.0, 1.1, 2.1
-     - Driver now consists of a folder "datera/" with the following files:
-       * datera_iscsi.py
-       * datera_api2.py
-       * datera_api21.py
-       * datera_common.py
-       ****IMPORTANT****: cinder.conf must be changed so `volume_driver = 
-       cinder.volume.drivers.datera.datera_iscsi.DateraDriver`
-   * - Ocata
-     - ocata-v2.3.0
-     - 2.3.0
-     - Templates, Tenants, 2.1 API Support, Code Restructure
-     - 1.0, 1.1, 2.1
-     - Driver now consists of a folder "datera/" with the following files:
-       * datera_iscsi.py
-       * datera_api2.py
-       * datera_api21.py
-       * datera_common.py
-       ****IMPORTANT****: cinder.conf must be changed so `volume_driver = 
-       cinder.volume.drivers.datera.datera_iscsi.DateraDriver`
-   * - Newton
-     - newton-v2.3.2
-     - 2.3.2
-     - Scalability bugfixes, Volume Placement, ACL multi-attach bugfix
-     - 1.0, 1.1, 2.1
-     - Driver now consists of a folder "datera/" with the following files:
-       * datera_iscsi.py
-       * datera_api2.py
-       * datera_api21.py
-       * datera_common.py
-       ****IMPORTANT****: cinder.conf must be changed so `volume_driver = 
-       cinder.volume.drivers.datera.datera_iscsi.DateraDriver`
-   * - Newton
-     - newton-v2.3.0
-     - 2.3.0
-     - Templates, Tenants, 2.1 API Support, Code Restructure
-     - 1.0, 1.1, 2.1
-     - Driver now consists of a folder "datera/" with the following files:
-       * datera_iscsi.py
-       * datera_api2.py
-       * datera_api21.py
-       * datera_common.py
-       ****IMPORTANT****: cinder.conf must be changed so `volume_driver = 
-       cinder.volume.drivers.datera.datera_iscsi.DateraDriver`
-   * - Newton
-     - newton-v2.2.1
-     - 2.2.1
-     - Capabilities List, Extended Volume-Type Support, Naming Convention Change, Manage/Unmanage Snapshot polling
-     - 1.0, 1.1
-     - https://raw.githubusercontent.com/Datera/cinder-driver/newton-v2.2.1/src/datera.py
-   * - Newton
-     - newton-v2.2
-     - 2.2
-     - Capabilities List, Extended Volume-Type Support, Naming Convention Change, Manage/Unmanage
-     - 1.0, 1.1
-     - https://raw.githubusercontent.com/Datera/cinder-driver/newton-v2.2/src/datera.py
-   * - Newton
-     - newton-v2.1
-     - 2.1
-     - Multipathing, ACL
-     - 1.0, 1.1
-     - https://raw.githubusercontent.com/Datera/cinder-driver/newton-v2.1/src/datera.py
-   * - Mitaka
-     - mitaka-v2.4.0
-     - 2.4.0
-     - Retype Support
-     - 1.0, 1.1, 2.1, 2.2
-     - Driver now consists of a folder "datera/" with the following files:
-       * datera_iscsi.py
-       * datera_api2.py
-       * datera_api21.py
-       * datera_common.py
-       ****IMPORTANT****: cinder.conf must be changed so `volume_driver = 
-       cinder.volume.drivers.datera.datera_iscsi.DateraDriver`
-   * - Mitaka
-     - mitaka-v2.3.2
-     - 2.3.2
-     - Scalability bugfixes, Volume Placement, ACL multi-attach bugfix
-     - 1.0, 1.1, 2.1
-     - Driver now consists of a folder "datera/" with the following files:
-       * datera_iscsi.py
-       * datera_api2.py
-       * datera_api21.py
-       * datera_common.py
-       ****IMPORTANT****: cinder.conf must be changed so `volume_driver = 
-       cinder.volume.drivers.datera.datera_iscsi.DateraDriver`
-   * - Mitaka
-     - mitaka-v2.3.0
-     - 2.3.0
-     - Templates, Tenants, 2.1 API Support, Code Restructure
-     - 1.0, 1.1, 2.1
-     - Driver now consists of a folder "datera/" with the following files:
-       * datera_iscsi.py
-       * datera_api2.py
-       * datera_api21.py
-       * datera_common.py
-       ****IMPORTANT****: cinder.conf must be changed so `volume_driver = 
-       cinder.volume.drivers.datera.datera_iscsi.DateraDriver`
-   * - Mitaka
-     - mitaka-v2.1.1
-     - 2.1.1
-     - Multipathing, ACL, Storage Instance Polling
-     - 1.0, 1.1, 1.1.6
-     - https://raw.githubusercontent.com/Datera/cinder-driver/mitaka-v2.1.1/src/datera.py
-   * - Mitaka
-     - mitaka-v2.1.2
-     - 2.1.2
-     - Multipathing, ACL, Storage Instance Polling, Snapshot Polling
-     - 1.1, 1.1.6, 1.1.7, 2.0
-     - https://raw.githubusercontent.com/Datera/cinder-driver/mitaka-v2.1.2/src/datera.py
-   * - Mitaka
-     - mitaka-v2.1.3
-     - 2.1.3
-     - Multipathing, ACL, Storage Instance Polling, Snapshot Polling, IP Pool bugfix
-     - 1.1, 1.1.6, 1.1.7, 2.0
-     - https://raw.githubusercontent.com/Datera/cinder-driver/mitaka-v2.1.3/src/datera.py
-   * - Mitaka
-     - mitaka-v2
-     - 2.0
-     - Baseline Driver
-     - 1.0, 1.1
-     - https://raw.githubusercontent.com/Datera/cinder-driver/mitaka-v2/src/datera.py
-   * - Liberty
-     - liberty-v2.1
-     - 2.1
-     - Multipathing, ACL
-     - 1.0, 1.1
-     - https://raw.githubusercontent.com/Datera/cinder-driver/liberty-v2.1/src/datera.py
-   * - Liberty
-     - liberty-v2
-     - 2.0
-     - Baseline Driver
-     - 1.0, 1.1
-     - https://raw.githubusercontent.com/Datera/cinder-driver/liberty-v2/src/datera.py
+   * - Version
+     - Changes
+   * - 1.0
+     - Initial driver
+   * - 1.1
+     - Look for lun-0 instead of lun-1.
+   * - 2.0
+     - Update For Datera API v2
+   * - 2.1
+     - Multipath, ACL and reorg
+   * - 2.2
+     - Capabilites List, Extended Volume-Type Support Naming convention change, Volume Manage/Unmanage support
+   * - 2.3
+     - Templates, Tenants, Snapshot Polling, 2.1 Api Version Support, Restructure
+   * - 2.3.1
+     - Scalability bugfixes
+   * - 2.3.2
+     - Volume Placement, ACL multi-attach bugfix
+   * - 2.4.0
+     - Fast Retype Support
+   * - 2.5.0
+     - Glance Image Caching, retyping/QoS bugfixes
+   * - 2.6.0
+     - Api 2.2 support
+   * - 2.6.1
+     - Glance interoperability fix
+   * - 2.7.0
+     - IOPS/GB and BW/GB settings, driver level overrides
+   * - 2.7.2
+     - Allowing DF: QoS Spec prefix, QoS type leak bugfix
 
--------
+---------------------------------
 Volume Driver Cinder.conf Options
--------
+---------------------------------
 
 .. list-table:: Description of Datera volume driver configuration options
    :header-rows: 1
@@ -172,12 +52,6 @@ Volume Driver Cinder.conf Options
    * - Configuration option = Default value
      - Description
    * - ``datera_api_port`` = ``7717``
-     - (DEPRECATED) (String) Datera API port.
-   * - ``datera_api_version`` = ``2``
-     - (DEPRECATED) (String) Datera API version.
-   * - ``datera_num_replicas`` = ``1``
-     - (String) Number of replicas to create of an inode.
-   * - ``driver_client_cert`` = ``None``
      - (String) The path to the client certificate for verification, if the driver supports it.
    * - ``driver_client_cert_key`` = ``None``
      - (String) The path to the client certificate key for verification, if the driver supports it.
@@ -185,8 +59,6 @@ Volume Driver Cinder.conf Options
      - (Int) Timeout for HTTP 503 retry messages
    * - ``datera_503_interval`` = ``5``
      - (Int) Interval between 503 retries
-   * - ``datera_acl_allow_all`` = ``False``
-     - (DEPRECATED) (Bool) True to set acl 'allow_all' on volumes created
    * - ``datera_debug`` = ``False``
      - (Bool) True to set function arg and return logging
    * - ``datera_debug_replica_count_override`` = ``False``
@@ -195,11 +67,13 @@ Volume Driver Cinder.conf Options
      - (String) If set to 'Map' --> OpenStack project ID will be mapped implicitly to Datera tenant ID. If set to 'None' --> Datera tenant ID will not be used during volume provisioning. If set to anything else --> Datera tenant ID will be the provided value
    * - ``datera_disable_profiler`` = ``False``
      - (Bool) Set to True to disable profiling in the Datera driver
+   * - ``datera_volume_type_defaults`` = ``None``
+     - (Dict) Settings here will be used as volume-type defaults if the volume-type setting is not provided.  This can be used, for example, to set a very low total_iops_max value if none is specified in the volume-type to prevent accidental overusage.  Options are specified via the following format, WITHOUT ANY 'DF:' PREFIX: 'datera_volume_type_defaults= iops_per_gb:100,bandwidth_per_gb:200...etc'
 
 
--------
+----------------------
 Volume-Type ExtraSpecs
--------
+----------------------
 
 .. list-table:: Description of Datera volume-type extra specs
    :header-rows: 1
@@ -236,31 +110,23 @@ Volume-Type ExtraSpecs
    * - ``DF:total_iops_max`` = ``0``
      - (Int) Total write IOPS setting for volume QoS.  Use 0 for unlimited
 
-------
-Datera Cinder Backup Driver
-------
+------------------------------------
+Datera Cinder Backup Version History
+------------------------------------
 
 .. list-table:: Datera Backup Driver Versions
    :header-rows: 1
    :class: config-ref-table
 
-   * - OpenStack Release
-     - Driver Branch Name
-     - Driver Version
-     - Additional Capabilities Introduced
-     - Supported Datera Product Versions
-     - URL
-   * - Master
-     - master
-     - 1.0.0
-     - Initial Driver
-     - 2.1, 2.2
-     - Driver config options go under [DEFAULT]
+   * - Version
+     - Changes
+   * - 1.0
+     - Initial driver
 
 
--------
+---------------------------------
 Backup Driver Cinder.conf Options
--------
+---------------------------------
 .. list-table:: Description of Datera backup driver configuration options
    :header-rows: 1
    :class: config-ref-table
@@ -288,9 +154,9 @@ Backup Driver Cinder.conf Options
    * - ``backup_datera_secondary_backup_drivers`` = []
      - (List) Secondary backup drivers for the Datera EDF driver to manage
 
--------
+--------------------------------------
 Backup Driver Dispatching/Multiplexing
--------
+--------------------------------------
 As of backup driver version 1.0.1 we allow for managing multiple secondary
 backup driver backends.  Vanilla Cinder supports only a single backup driver
 backend in an OpenStack cluster.  We've added backup driver dispatching to the
