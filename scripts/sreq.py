@@ -3,6 +3,7 @@ from __future__ import unicode_literals, division, print_function
 
 import argparse
 import json
+import io
 import re
 import sys
 
@@ -18,8 +19,9 @@ except ImportError:
 VERSION HISTORY:
     1.0.0 -- Initial sreq.py version
     1.0.1 -- Addition of timestamp filtering
+    1.1.0 -- Adding journalctl compatibility
 """
-VERSION = "v1.0.1"
+VERSION = "v1.1.0"
 
 USAGE = """
 
@@ -82,6 +84,26 @@ Datera Response URL: (?P<url>.*?)
 Datera Response Payload: (?P<payload>.*?)
 Datera Response Object.*""")
 
+# Journalctl matchers
+# ISO8601 2018-01-08T20:04:47+0000
+DREQ_J = re.compile(r"""^(?P<time>\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+\d{4}).*
+.*Datera Trace ID: (?P<trace>\w+-\w+-\w+-\w+-\w+)
+.*Datera Request ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
+.*Datera Request URL: (?P<url>.*?)
+.*Datera Request Method: (?P<method>.*?)
+.*Datera Request Payload: (?P<payload>.*?)
+.*Datera Request Headers: (?P<headers>.*?\})""")
+
+# ISO8601 2018-01-08T20:04:47+0000
+DRES_J = re.compile(r"""^(?P<time>\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+\d{4}).*
+.*Datera Trace ID: (?P<trace>\w+-\w+-\w+-\w+-\w+)
+.*Datera Response ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
+.*Datera Response TimeDelta: (?P<delta>\d+\.\d\d?\d?)s
+.*Datera Response URL: (?P<url>.*?)
+.*Datera Response Payload: (?P<payload>.*?)
+.*Datera Response Object.*""")
+#######
+
 ATTACH = re.compile(r"^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*"
                     r"Attaching volume (?P<vol>(\w+-){4}\w+) to instance "
                     r"(?P<vm>(\w+-){4}\w+) at mountpoint (?P<device>\S+) "
@@ -90,6 +112,17 @@ ATTACH = re.compile(r"^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*"
 DETACH = re.compile(r"^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*"
                     r"Detaching volume (?P<vol>(\w+-){4}\w+) from instance "
                     r"(?P<vm>(\w+-){4}\w+)")
+
+# Journalctl matchers
+ATTACH_J = re.compile(r"^(?P<time>\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+\d{4}).*"
+                      r"Attaching volume (?P<vol>(\w+-){4}\w+) to instance "
+                      r"(?P<vm>(\w+-){4}\w+) at mountpoint (?P<device>\S+) "
+                      r"on host (?P<host>\S+)\.")
+
+DETACH_J = re.compile(r"^(?P<time>\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+\d{4}).*"
+                      r"Detaching volume (?P<vol>(\w+-){4}\w+) from instance "
+                      r"(?P<vm>(\w+-){4}\w+)")
+#######
 
 TUP_VALS = {"REQTIME":     0,
             "REQTRACE":    1,
@@ -190,10 +223,18 @@ def get_filtered(filters, data, vals):
     return fdata
 
 
-def find_attach_detach(lines):
+# TODO: Currently only finds attach/detach for boot-from-volume attachments.
+# Manual attach/detach does not generate the necessary log messages for us
+# to track it (weirdly).
+def find_attach_detach(lines, journalctl=False):
     attach_detach = []
     for line in lines:
-        amatch = ATTACH.match(line)
+        if journalctl:
+            amatch = ATTACH_J.match(line)
+            dmatch = DETACH_J.match(line)
+        else:
+            amatch = ATTACH.match(line)
+            dmatch = DETACH.match(line)
         if amatch:
             attach_detach.append((
                 amatch.group("time"),
@@ -202,7 +243,6 @@ def find_attach_detach(lines):
                 amatch.group("vm"),
                 amatch.group("device"),
                 amatch.group("host")))
-        dmatch = DETACH.match(line)
         if dmatch:
             attach_detach.append((
                 dmatch.group("time"),
@@ -218,7 +258,7 @@ def find_attach_detach(lines):
 
 def get_attach_detach(args, data):
     jsond = []
-    ad = find_attach_detach(data)
+    ad = find_attach_detach(data, args.journalctl)
     limit = args.limit if args.limit else len(ad)
     if args.sort.upper() == 'RESDELTA':
         sort = 'TIME'
@@ -251,7 +291,7 @@ def get_attach_detach(args, data):
 # Turns multiple files into one big file generator
 def gen_file_data(files):
     for file in files:
-        with open(file) as f:
+        with io.open(file) as f:
             for line in f:
                 yield line
 
@@ -260,7 +300,7 @@ def gen_file_data(files):
 def gen_log_blocks(data):
     prev = None
     for line in data:
-        if line.startswith("Datera Trace"):
+        if "Datera Trace ID" in line:
             found = [prev, line]
             for _ in range(6):
                 found.append(next(data))
@@ -268,12 +308,15 @@ def gen_log_blocks(data):
         prev = line
 
 
-def get_match_dict(data):
+def get_match_dict(data, journalctl=False):
     found = {}
 
     log_blocks = gen_log_blocks(data)
     for logb in log_blocks:
-        req_match = DREQ.match(logb)
+        if args.journalctl:
+            req_match = DREQ_J.match(logb)
+        else:
+            req_match = DREQ.match(logb)
         if req_match:
             found[req_match.group("rid")] = [req_match.group("time"),
                                              req_match.group("trace"),
@@ -283,15 +326,24 @@ def get_match_dict(data):
                                              req_match.group("payload"),
                                              req_match.group("headers")]
         else:
-            res_match = DRES.match(logb)
+            if args.journalctl:
+                res_match = DRES_J.match(logb)
+            else:
+                res_match = DRES.match(logb)
             if not res_match:
-                raise ValueError("No match\n{}".format(logb))
-            found[res_match.group("rid")].extend([res_match.group("time"),
-                                                  res_match.group("trace"),
-                                                  res_match.group("rid"),
-                                                  res_match.group("delta"),
-                                                  res_match.group("url"),
-                                                  res_match.group("payload")])
+                raise ValueError("Regex didn't match\n{}".format(logb))
+            rrid = res_match.group("rid")
+            if rrid in found:
+                found[res_match.group("rid")].extend(
+                        [res_match.group("time"),
+                         res_match.group("trace"),
+                         res_match.group("rid"),
+                         res_match.group("delta"),
+                         res_match.group("url"),
+                         res_match.group("payload")])
+            else:
+                # print("No Request Match\n{}".format(logb))
+                pass
 
     return found
 
@@ -401,7 +453,7 @@ def main(args):
         get_attach_detach(args, data)
         sys.exit(0)
 
-    found = get_match_dict(data).values()
+    found = get_match_dict(data, args.journalctl).values()
 
     if args.filter:
         found = get_filtered(args.filter, found, TUP_VALS)
@@ -443,6 +495,8 @@ if __name__ == "__main__":
                         help="Show attaches/detaches")
     parser.add_argument("-v", "--version", action="store_true",
                         help="Print version info")
+    parser.add_argument("--journalctl", action="store_true",
+                        help="Log is journalctl based, use journalctl parsers")
     parser.add_argument("--stats", action="store_true")
     args = parser.parse_args()
     sys.exit(main(args))

@@ -833,7 +833,7 @@ class DateraApi(object):
         self._create_cloned_volume_2_1(volume, src_vol)
         # Force volume resize
         src_vol['size'] = 0
-        self._extend_volume_2_2(src_vol, volume['size'])
+        self._extend_volume_2_1(src_vol, volume['size'])
         # Determine if we need to retype the newly created volume
         vtype_id = volume.get('volume_type_id')
         if vtype_id and self.image_type and vtype_id != self.image_type:

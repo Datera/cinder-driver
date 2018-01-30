@@ -2,11 +2,9 @@
 from __future__ import unicode_literals, division, print_function
 
 import argparse
-import arrow
 import errno
 import io
 import os
-import requests
 import shlex
 import shutil
 import subprocess
@@ -15,11 +13,17 @@ import tarfile
 import tempfile
 import time
 
+import arrow
 import six
+import requests
 
 from scaffold import readCinderConf
 
-VERSION = '1.0'
+VERSION = '1.1'
+VERSION_HISTORY = """
+    1.0 - Initial Callhome Version
+    1.1 - Added Journalctl support
+"""
 SUCCESS = 0
 FAILURE = 1
 LOGFILE_VAR = "CH_LOGFILES"
@@ -43,11 +47,13 @@ def dprint(*args, **kwargs):
         print(*args, **kwargs)
 
 
-def exe(cmd, stdout=None):
+def exe(cmd, stdout=None, shell=False):
     dprint(cmd)
+    if not shell:
+        cmd = shlex.split(cmd)
     if stdout is None:
-        return subprocess.check_output(shlex.split(cmd))
-    subprocess.check_call(shlex.split(cmd), stdout=stdout)
+        return subprocess.check_output(cmd, shell=shell)
+    subprocess.check_call(cmd, stdout=stdout, shell=shell)
 
 
 def mk_archive(directory, output_fn):
@@ -82,15 +88,29 @@ def post_archive(fn):
     print("Response: ", resp.text)
 
 
-def copy_filter_files(files, bts, ats):
+def copy_filter_files(files, pts, ts, journalctl=False):
     # Create temp directory and archive filename
     tmpd = tempfile.mkdtemp()
-    tmpfn = "cinder-logs.{}.{}.tar.gz".format(bts, ats)
+    host = exe("hostname")
+    tmpfn = "cinder-logs.{}.{}.{}.tar.gz".format(
+        host, pts.timestamp, ts.timestamp)
     tmpdfn = os.path.join(tmpd, tmpfn)
 
     # Copy files to temp directory
     for file in files:
-        shutil.copyfile(file, os.path.join(tmpd, os.path.basename(file)))
+        fname = os.path.join(tmpd, os.path.basename(file))
+        if journalctl:
+            cmd = ("journalctl --utc --unit {} --since '{}' --until '{}' "
+                   "--output short-iso > {}".format(
+                    file,
+                    pts.format(
+                        "YYYY-MM-DD HH:MM:SS"),
+                    ts.format(
+                        "YYYY-MM-DD HH:MM:SS"),
+                    fname))
+            exe(cmd, shell=True)
+        else:
+            shutil.copyfile(file, fname)
 
     # Create filter filenames
     rfile = os.path.join(tmpd, "requests.json")
@@ -99,10 +119,15 @@ def copy_filter_files(files, bts, ats):
     tmpfiles = " ".join((os.path.join(tmpd, os.path.basename(file))
                         for file in files))
     # Filter for requests
+    if journalctl:
+        jstring = "--journalctl"
+    else:
+        jstring = ""
     print("tmpfiles: ", tmpfiles)
     with io.open(rfile, "w+") as f:
         exe("./sreq.py {} --json --filter REQTIME@@{} "
-            "--filter REQTIME**{}".format(tmpfiles, bts, ats), stdout=f)
+            "--filter REQTIME**{} {}".format(
+                tmpfiles, ts.timestamp, pts.timestamp, jstring), stdout=f)
 
     # Filter for attach_detach
     with io.open(afile, "w+") as f:
@@ -130,7 +155,7 @@ def main(args):
         return SUCCESS
 
     # Timestamp for when we ended log collection
-    timestamp = arrow.get(time.time())
+    timestamp = arrow.get(time.gmtime(time.time()))
 
     if args.logfiles:
         logfiles = args.logfiles
@@ -145,12 +170,12 @@ def main(args):
 
     tsfile = os.path.join(LOCAL_LOGDIR, "last")
     while True:
-        prev_timestamp = arrow.get(0).timestamp
+        prev_timestamp = arrow.get(0)
         if os.path.isfile(tsfile):
             with io.open(tsfile) as f:
                 prev_timestamp = arrow.get(f.read().strip())
 
-        copy_filter_files(logfiles, timestamp, prev_timestamp)
+        copy_filter_files(logfiles, prev_timestamp, timestamp, args.journalctl)
 
         # Save timestamp to file so we know where to start gathering logs again
         with io.open(tsfile, 'w') as f:
@@ -163,6 +188,10 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('logfiles', nargs='*')
+    parser.add_argument('-j', '--journalctl', action='store_true',
+                        help='If present, logfiles argument (or {} environment'
+                             ' variable value) will be interpreted as a '
+                             '"journalctl" unit'.format(LOGFILE_VAR))
     parser.add_argument('-v', '--version', action='store_true',
                         help='Show callhome script version')
     args = parser.parse_args()
