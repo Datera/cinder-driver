@@ -105,13 +105,20 @@ class DateraApi(object):
     # =================
 
     def _extend_volume_2_1(self, volume, new_size):
+        if volume['size'] >= new_size:
+            LOG.warning("Volume size not extended due to original size being "
+                        "greater or equal to new size.  Originial: "
+                        "%(original)s, New: %(new)s", {
+                            'original': volume['size'],
+                            'new': new_size})
+            return
         tenant = self._create_tenant(volume)
         policies = self._get_policies_for_resource(volume)
         template = policies['template']
         if template:
             LOG.warning("Volume size not extended due to template binding:"
                         " volume: %(volume)s, template: %(template)s",
-                        volume=volume, template=template)
+                        {'volume': volume, 'template': template})
             return
 
         # Offline App Instance, if necessary
@@ -824,6 +831,9 @@ class DateraApi(object):
 
         # Now perform the clone of the found image or newly cached image
         self._create_cloned_volume_2_1(volume, src_vol)
+        # Force volume resize
+        src_vol['size'] = 0
+        self._extend_volume_2_2(src_vol, volume['size'])
         # Determine if we need to retype the newly created volume
         vtype_id = volume.get('volume_type_id')
         if vtype_id and self.image_type and vtype_id != self.image_type:
@@ -856,9 +866,12 @@ class DateraApi(object):
                     reason=_("fmt=%(fmt)s backed by:%(backing_file)s")
                     % {'fmt': fmt, 'backing_file': backing_file, })
 
-            virtual_size = int(
+            vsize = int(
                 math.ceil(float(data.virtual_size) / units.Gi))
-            vol['size'] = virtual_size
+            vol['size'] = vsize
+            vtype = vol['volume_type_id']
+            LOG.info("Creating cached image with volume type: %(vtype)s and "
+                     "size %(size)s", {'vtype': vtype, 'size': vsize})
             self._create_volume_2_1(vol)
             with self._connect_vol(context, vol) as device:
                 LOG.debug("Moving image %s to volume %s",
@@ -928,15 +941,14 @@ class DateraApi(object):
         LOG.debug("Checking if volume %s exists", volume['id'])
         tenant = self._create_tenant(volume)
         try:
-            self._issue_api_request(
+            return self._issue_api_request(
                 datc.URL_TEMPLATES['ai_inst']().format(
                     datc._get_name(volume['id'])),
                 api_version=API_VERSION, tenant=tenant)
             LOG.debug("Volume %s exists", volume['id'])
-            return True
         except exception.NotFound:
             LOG.debug("Volume %s not found", volume['id'])
-            return False
+            return {}
 
     @contextlib.contextmanager
     def _connect_vol(self, context, vol):
