@@ -314,7 +314,9 @@ class DateraApi(object):
             found = False
             initiator = connector['initiator']
             if not found:
-                data = {'id': initiator, 'name': initiator_name}
+                # TODO(_alastor_): Take out the 'force' flag when we fix
+                # DAT-15931
+                data = {'id': initiator, 'name': initiator_name, 'force': True}
                 # Try and create the initiator
                 # If we get a conflict, ignore it
                 self._issue_api_request("initiators",
