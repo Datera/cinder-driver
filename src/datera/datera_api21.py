@@ -51,7 +51,7 @@ class DateraApi(object):
     # =================
 
     def _create_volume_2_1(self, volume):
-        tenant = self._create_tenant(volume)
+        tenant = self._create_tenant_2_1(volume)
         policies = self._get_policies_for_resource(volume)
         num_replicas = int(policies['replica_count'])
         storage_name = policies['default_storage_name']
@@ -112,7 +112,7 @@ class DateraApi(object):
                             'original': volume['size'],
                             'new': new_size})
             return
-        tenant = self._create_tenant(volume)
+        tenant = self._create_tenant_2_1(volume)
         policies = self._get_policies_for_resource(volume)
         template = policies['template']
         if template:
@@ -153,7 +153,7 @@ class DateraApi(object):
 
     def _create_cloned_volume_2_1(self, volume, src_vref):
         policies = self._get_policies_for_resource(volume)
-        tenant = self._create_tenant(volume)
+        tenant = self._create_tenant_2_1(volume)
         store_name, vol_name = self._scrape_template(policies)
 
         src = "/" + datc.URL_TEMPLATES['vol_inst'](
@@ -177,7 +177,7 @@ class DateraApi(object):
 
     def _delete_volume_2_1(self, volume):
         self._detach_volume_2_1(None, volume)
-        tenant = self._create_tenant(volume)
+        tenant = self._create_tenant_2_1(volume)
         app_inst = datc._get_name(volume['id'])
         try:
             self._issue_api_request(
@@ -204,7 +204,7 @@ class DateraApi(object):
     def _initialize_connection_2_1(self, volume, connector):
         # Now online the app_instance (which will online all storage_instances)
         multipath = connector.get('multipath', False)
-        tenant = self._create_tenant(volume)
+        tenant = self._create_tenant_2_1(volume)
         url = datc.URL_TEMPLATES['ai_inst']().format(
             datc._get_name(volume['id']))
         data = {
@@ -258,7 +258,7 @@ class DateraApi(object):
     # =================
 
     def _create_export_2_1(self, context, volume, connector):
-        tenant = self._create_tenant(volume)
+        tenant = self._create_tenant_2_1(volume)
         url = datc.URL_TEMPLATES['ai_inst']().format(
             datc._get_name(volume['id']))
         data = {
@@ -378,7 +378,7 @@ class DateraApi(object):
     # =================
 
     def _detach_volume_2_1(self, context, volume, attachment=None):
-        tenant = self._create_tenant(volume)
+        tenant = self._create_tenant_2_1(volume)
         url = datc.URL_TEMPLATES['ai_inst']().format(
             datc._get_name(volume['id']))
         data = {
@@ -453,7 +453,7 @@ class DateraApi(object):
     # ===================
 
     def _create_snapshot_2_1(self, snapshot):
-        tenant = self._create_tenant(snapshot)
+        tenant = self._create_tenant_2_1(snapshot)
         policies = self._get_policies_for_resource(snapshot)
 
         store_name, vol_name = self._scrape_template(policies)
@@ -476,7 +476,7 @@ class DateraApi(object):
     # ===================
 
     def _delete_snapshot_2_1(self, snapshot):
-        tenant = self._create_tenant(snapshot)
+        tenant = self._create_tenant_2_1(snapshot)
         policies = self._get_policies_for_resource(snapshot)
 
         store_name, vol_name = self._scrape_template(policies)
@@ -521,7 +521,7 @@ class DateraApi(object):
     # ========================
 
     def _create_volume_from_snapshot_2_1(self, volume, snapshot):
-        tenant = self._create_tenant(volume)
+        tenant = self._create_tenant_2_1(volume)
         policies = self._get_policies_for_resource(snapshot)
 
         store_name, vol_name = self._scrape_template(policies)
@@ -587,7 +587,7 @@ class DateraApi(object):
                     "unsupported.  Type1: %s, Type2: %s",
                     volume['volume_type_id'], new_type)
 
-            tenant = self._create_tenant(volume)
+            tenant = self._create_tenant_2_1(volume)
             self._update_qos_2_1(volume, new_pol, tenant, clear_old=True)
             vol_params = (
                 {
@@ -616,7 +616,7 @@ class DateraApi(object):
         # the v2.1 API.  Eg.  If tenant A is the tenant for the volume to be
         # managed, it must also be tenant A that makes this request.
         # This will be fixed in a later API update
-        tenant = self._create_tenant(volume)
+        tenant = self._create_tenant_2_1(volume)
         existing_ref = existing_ref['source-name']
         if existing_ref.count(":") not in (2, 3):
             raise exception.ManageExistingInvalidReference(
@@ -644,7 +644,7 @@ class DateraApi(object):
     # ===================
 
     def _manage_existing_get_size_2_1(self, volume, existing_ref):
-        tenant = self._create_tenant(volume)
+        tenant = self._create_tenant_2_1(volume)
         existing_ref = existing_ref['source-name']
         if existing_ref.count(":") != 2:
             raise exception.ManageExistingInvalidReference(
@@ -695,7 +695,7 @@ class DateraApi(object):
                                     offset, sort_keys, sort_dirs):
         # Use the first volume to determine the tenant we're working under
         if cinder_volumes:
-            tenant = self._create_tenant(cinder_volumes[0])
+            tenant = self._create_tenant_2_1(cinder_volumes[0])
         else:
             tenant = None
         LOG.debug("Listing manageable Datera volumes")
@@ -754,7 +754,7 @@ class DateraApi(object):
     # ============
 
     def _unmanage_2_1(self, volume):
-        tenant = self._create_tenant(volume)
+        tenant = self._create_tenant_2_1(volume)
         LOG.debug("Unmanaging Cinder volume %s.  Changing name to %s",
                   volume['id'], datc._get_unmanaged(volume['id']))
         data = {'name': datc._get_unmanaged(volume['id'])}
@@ -917,7 +917,7 @@ class DateraApi(object):
         return public
 
     def _get_vol_timestamp(self, volume):
-        tenant = self._create_tenant()
+        tenant = self._create_tenant_2_1()
         policies = self._get_policies_for_resource(volume)
         store_name, vol_name = self._scrape_template(policies)
 
@@ -939,7 +939,7 @@ class DateraApi(object):
 
     def _vol_exists_2_1(self, volume):
         LOG.debug("Checking if volume %s exists", volume['id'])
-        tenant = self._create_tenant(volume)
+        tenant = self._create_tenant_2_1(volume)
         try:
             return self._issue_api_request(
                 datc.URL_TEMPLATES['ai_inst']().format(
@@ -995,7 +995,7 @@ class DateraApi(object):
     # = Tenancy =
     # ===========
 
-    def _create_tenant(self, volume=None):
+    def _create_tenant_2_1(self, volume=None):
         # Create the Datera tenant if specified in the config
         # Otherwise use the tenant provided
         if self.tenant_id is None:
@@ -1189,14 +1189,14 @@ class DateraApi(object):
     # ============
 
     def _get_metadata(self, volume):
-        tenant = self._create_tenant(volume)
+        tenant = self._create_tenant_2_1(volume)
         url = datc.URL_TEMPLATES['ai_inst']().format(
             datc._get_name(volume['id'])) + "/metadata"
         return self._issue_api_request(url, api_version=API_VERSION,
                                        tenant=tenant)['data']
 
     def _update_metadata(self, volume, keys):
-        tenant = self._create_tenant(volume)
+        tenant = self._create_tenant_2_1(volume)
         url = datc.URL_TEMPLATES['ai_inst']().format(
             datc._get_name(volume['id'])) + "/metadata"
         self._issue_api_request(

@@ -167,7 +167,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
             raise exception.InvalidInput(msg)
 
         self.login()
-        self._create_tenant()
+        self.create_tenant()
 
     # =================
 
@@ -417,6 +417,14 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
 
     @datc._api_lookup
     def login(self):
+        pass
+
+    # ===========
+    # = Tenancy =
+    # ===========
+
+    @datc._api_lookup
+    def create_tenant(self):
         pass
 
     # =======
