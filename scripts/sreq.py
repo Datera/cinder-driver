@@ -185,12 +185,12 @@ def timestamp_filter_after(x, y):
     return tx >= ty
 
 
-OPERATORS_FUNC = {"=": lambda x, y: x == y,
+OPERATORS_FUNC = {"=": lambda x, y: str(x) == str(y),
                   ">": lambda x, y: float(x) > float(y),
                   "<": lambda x, y: float(x) < float(y),
                   ">=": lambda x, y: float(x) >= float(y),
                   "<=": lambda x, y: float(x) <= float(y),
-                  "##": lambda x, y: y in x,
+                  "##": lambda x, y: str(y) in str(x),
                   "@@": timestamp_filter_after,
                   "**": timestamp_filter_before}
 
@@ -199,22 +199,20 @@ def _sort_helper(x):
     try:
         return x[TUP_VALS[args.sort.upper()]]
     except IndexError:
-        return x[0]
+        return x[AD_VALS[args.sort.upper()]]
 
 
 def filter_func(found, loc, val, operator):
     if operator:
-        return filter(lambda x: len(x) >= loc and operator(x[loc], val), found)
+        return (x for x in found if len(x) >= loc and operator(x[loc], val))
     return found
 
 
 def filter_all(found, val, operator, fields):
-    result = set()
-    for field in fields.values():
-        for f in found:
+    for f in found:
+        for field in fields.values():
             if operator(f[field], val):
-                result.add(tuple(f))
-    return list(result)
+                yield f
 
 
 def get_filtered(filters, data, vals):
@@ -273,7 +271,7 @@ def find_attach_detach(lines, journalctl=False):
 def get_attach_detach(args, data):
     jsond = []
     ad = find_attach_detach(data, args.journalctl)
-    limit = args.limit if args.limit else len(ad)
+    limit = args.limit if args.limit else None
     if args.sort.upper() == 'RESDELTA':
         sort = 'TIME'
     else:
@@ -296,7 +294,8 @@ def get_attach_detach(args, data):
             print(*entry)
             print()
 
-        limit -= 1
+        if limit:
+            limit -= 1
     if jsond:
         print(json.dumps(jsond))
     sys.exit(0)
@@ -363,24 +362,16 @@ def get_match_dict(data, journalctl=False):
 
 
 def orphan_filter(found):
-    orphans = []
-    normies = []
     for entry in found.values() if type(found) == dict else found:
-        if len(entry) < len(TUP_VALS):
-            orphans.append(entry)
+        if len(entry) < len(TUP_VALS) and args.orphans:
+            # orphans.append(entry)
+            yield entry
         else:
-            normies.append(entry)
-
-    if args.orphans:
-        result = orphans
-    else:
-        result = normies
-
-    return result
+            yield entry
 
 
 def print_results(result):
-    limit = args.limit if args.limit else len(result)
+    limit = args.limit if args.limit else None
     jsond = []
     for entry in reversed(sorted(result, key=_sort_helper)):
         if limit == 0:
@@ -402,7 +393,8 @@ def print_results(result):
             print()
             print(*entry)
             print()
-        limit -= 1
+        if limit:
+            limit -= 1
     if jsond:
         print(json.dumps(jsond))
 

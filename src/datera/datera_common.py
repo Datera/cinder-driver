@@ -170,11 +170,11 @@ def _api_lookup(func):
                     (func.__name__, api_version.replace(".", "_")))
             try:
                 if obj.do_profile:
-                    LOG.info("Trying method: %s", name)
+                    LOG.debug("Trying method: %s", name)
                     call_id = uuid.uuid4()
                     LOG.debug("Profiling method: %s, id %s", name, call_id)
                     t1 = time.time()
-                    obj.thread_local.trace_id = call_id
+                obj.thread_local.trace_id = call_id
                 result = getattr(obj, name)(*args[1:], **kwargs)
                 if obj.do_profile:
                     t2 = time.time()
