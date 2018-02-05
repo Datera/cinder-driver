@@ -20,8 +20,9 @@ VERSION HISTORY:
     1.0.0 -- Initial sreq.py version
     1.0.1 -- Addition of timestamp filtering
     1.1.0 -- Adding journalctl compatibility
+    1.2.0 -- Added ability to leave off field in --filter to check all fields
 """
-VERSION = "v1.1.0"
+VERSION = "v1.2.0"
 
 USAGE = """
 
@@ -57,8 +58,13 @@ Filter by enum contents
 
     $ ./sreq.py /your/cinder-volume/log/location.log \
 --pretty \
---filter REQPAYLOAD=OS-7913f69f-3d56-49e0-a347-e095b982fb6a
---check-contents
+--filter "REQPAYLOAD##OS-7913f69f-3d56-49e0-a347-e095b982fb6a"
+
+Filter by all enum contents
+
+    $ ./sreq.py /your/cinder-volume/log/location.log \
+--pretty \
+--filter "##OS-7913f69f-3d56-49e0-a347-e095b982fb6a"
 
 Show only requests without replies
     $ ./sreq.py /your/cinder-volume/log/location.log \
@@ -199,8 +205,16 @@ def _sort_helper(x):
 def filter_func(found, loc, val, operator):
     if operator:
         return filter(lambda x: len(x) >= loc and operator(x[loc], val), found)
-    else:
-        return found
+    return found
+
+
+def filter_all(found, val, operator, fields):
+    result = set()
+    for field in fields.values():
+        for f in found:
+            if operator(f[field], val):
+                result.add(tuple(f))
+    return list(result)
 
 
 def get_filtered(filters, data, vals):
@@ -213,13 +227,13 @@ def get_filtered(filters, data, vals):
                 k, v = sp
                 break
         if not k:
-            raise ValueError("No valid operator detected in {}".format(
-                filters))
-        k = k.strip().upper()
-        fdata = filter_func(fdata,
-                            vals[k.upper()],
-                            v,
-                            OPERATORS_FUNC[operator])
+            fdata = filter_all(fdata, v, OPERATORS_FUNC[operator], vals)
+        else:
+            k = k.strip().upper()
+            fdata = filter_func(fdata,
+                                vals[k.upper()],
+                                v,
+                                OPERATORS_FUNC[operator])
     return fdata
 
 
