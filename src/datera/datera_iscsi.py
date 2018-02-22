@@ -117,8 +117,9 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         2.7.3 - Fixed bug in clone_image where size was not set correctly
         2.7.4 - Fix for create_tenant incorrect API call
                 Temporary fix for DAT-15931
+        2.7.5 - Removed "force" parameter from /initiators v2.1 API requests
     """
-    VERSION = '2.7.4'
+    VERSION = '2.7.5'
 
     CI_WIKI_NAME = "datera-ci"
 
