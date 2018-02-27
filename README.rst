@@ -69,6 +69,11 @@ Volume Driver Cinder.conf Options
      - (Bool) Set to True to disable profiling in the Datera driver
    * - ``datera_volume_type_defaults`` = ``None``
      - (Dict) Settings here will be used as volume-type defaults if the volume-type setting is not provided.  This can be used, for example, to set a very low total_iops_max value if none is specified in the volume-type to prevent accidental overusage.  Options are specified via the following format, WITHOUT ANY 'DF:' PREFIX: 'datera_volume_type_defaults= iops_per_gb:100,bandwidth_per_gb:200...etc'
+   * - ``datera_enable_image_cache`` = ``False``
+     - (Bool) Set to True to enable Datera backend image caching
+   * - ``datera_image_cache_volume_type_id`` = ``None``
+     - (String) Cinder volume type id to use for cached images
+
 
 
 ----------------------
@@ -109,6 +114,10 @@ Volume-Type ExtraSpecs
      - (Int) Max write IOPS setting for volume QoS.  Use 0 for unlimited
    * - ``DF:total_iops_max`` = ``0``
      - (Int) Total write IOPS setting for volume QoS.  Use 0 for unlimited
+   * - ``DF:iops_per_gb`` = ``0``
+     - (Int) IOPS per GB of data allocated for the volume.  If this value exceeds the total_max_iops value, the total_max_iops will be used instead
+   * - ``DF:bandwidth_per_gb`` = ``0``
+     - (Int) Bandwidth (KB/s) per GB of data allocated for the volume.  If this value exceeds the total_max_bandwidth value, the total_max_bandwidth will be used instead
 
 ------------------------------------
 Datera Cinder Backup Version History

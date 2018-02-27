@@ -121,31 +121,20 @@ class DateraApi(object):
                         {'volume': volume, 'template': template})
             return
 
-        # Offline App Instance, if necessary
-        reonline = False
-        app_inst = self._issue_api_request(
-            datc.URL_TEMPLATES['ai_inst']().format(
-                datc._get_name(volume['id'])),
-            api_version=API_VERSION, tenant=tenant)
-        if app_inst['data']['admin_state'] == 'online':
-            reonline = True
-            self._detach_volume_2_1(None, volume)
-        # Change Volume Size
-        app_inst = datc._get_name(volume['id'])
-        data = {
-            'size': new_size
-        }
-        store_name, vol_name = self._scrape_template(policies)
-        self._issue_api_request(
-            datc.URL_TEMPLATES['vol_inst'](
-                store_name, vol_name).format(app_inst),
-            method='put',
-            body=data,
-            api_version=API_VERSION,
-            tenant=tenant)
-        # Online Volume, if it was online before
-        if reonline:
-            self._create_export_2_1(None, volume, None)
+        with self._offline_flip_2_1(volume, tenant):
+            # Change Volume Size
+            app_inst = datc._get_name(volume['id'])
+            data = {
+                'size': new_size
+            }
+            store_name, vol_name = self._scrape_template(policies)
+            self._issue_api_request(
+                datc.URL_TEMPLATES['vol_inst'](
+                    store_name, vol_name).format(app_inst),
+                method='put',
+                body=data,
+                api_version=API_VERSION,
+                tenant=tenant)
 
     # =================
     # = Cloned Volume =
@@ -589,18 +578,19 @@ class DateraApi(object):
 
             tenant = self._create_tenant_2_1(volume)
             self._update_qos_2_1(volume, new_pol, tenant, clear_old=True)
-            vol_params = (
-                {
-                    'placement_mode': new_pol['placement_mode'],
-                    'replica_count': new_pol['replica_count'],
-                })
-            url = datc.URL_TEMPLATES['vol_inst'](
-                old_pol['default_storage_name'],
-                old_pol['default_volume_name']).format(
-                    datc._get_name(volume['id']))
-            self._issue_api_request(
-                url, method='put', body=vol_params,
-                api_version=API_VERSION, tenant=tenant)
+            with self._offline_flip_2_1(volume, tenant):
+                vol_params = (
+                    {
+                        'placement_mode': new_pol['placement_mode'],
+                        'replica_count': new_pol['replica_count'],
+                    })
+                url = datc.URL_TEMPLATES['vol_inst'](
+                    old_pol['default_storage_name'],
+                    old_pol['default_volume_name']).format(
+                        datc._get_name(volume['id']))
+                self._issue_api_request(
+                    url, method='put', body=vol_params,
+                    api_version=API_VERSION, tenant=tenant)
             return True
 
         else:
@@ -1137,20 +1127,32 @@ class DateraApi(object):
         type_id = resource.get('volume_type_id', None)
         if type_id is not None:
             iops_per_gb = int(policies.get('iops_per_gb', 0))
-            bw_per_gb = int(policies.get('bw_per_gb', 0))
+            bandwidth_per_gb = int(policies.get('bandwidth_per_gb', 0))
             # Filter for just QOS policies in result. All of their keys
             # should end with "max"
             fpolicies = {k: int(v) for k, v in
                          policies.items() if k.endswith("max")}
             # Filter all 0 values from being passed
             fpolicies = dict(filter(lambda _v: _v[1] > 0, fpolicies.items()))
-            # Calculate and set iops/gb and bw/gb, but only if
-            # total_iops_max and total_bw_max aren't set since they take
+            # Calculate and set iops/gb and bw/gb, but only if they don't
+            # exceed total_iops_max and total_bw_max aren't set since they take
             # priority
-            if iops_per_gb and 'total_iops_max' not in fpolicies:
-                fpolicies['total_iops_max'] = iops_per_gb * resource['size']
-            if bw_per_gb:
-                fpolicies['total_bw_max'] = bw_per_gb * resource['size']
+            if iops_per_gb:
+                ipg = iops_per_gb * resource['size']
+                # Not using zero, because zero means unlimited
+                im = fpolicies.get('total_iops_max', 1)
+                r = ipg
+                if ipg > im:
+                    r = im
+                fpolicies['total_iops_max'] = r
+            if bandwidth_per_gb:
+                bpg = bandwidth_per_gb * resource['size']
+                # Not using zero, because zero means unlimited
+                bm = fpolicies.get('total_iops_max', 1)
+                r = bpg
+                if bpg > bm:
+                    r = bm
+                fpolicies['total_bandwidth_max'] = r
             if fpolicies or clear_old:
                 try:
                     self._issue_api_request(
@@ -1204,3 +1206,19 @@ class DateraApi(object):
         self._issue_api_request(
             url, method='put', body=keys, api_version=API_VERSION,
             tenant=tenant)
+
+    @contextlib.contextmanager
+    def _offline_flip_2_1(self, volume, tenant):
+        # Offline App Instance, if necessary
+        reonline = False
+        app_inst = self._issue_api_request(
+            datc.URL_TEMPLATES['ai_inst']().format(
+                datc._get_name(volume['id'])),
+            api_version=API_VERSION, tenant=tenant)
+        if app_inst['data']['admin_state'] == 'online':
+            reonline = True
+        self._detach_volume_2_1(None, volume)
+        yield
+        # Online Volume, if it was online before
+        if reonline:
+            self._create_export_2_1(None, volume, None)

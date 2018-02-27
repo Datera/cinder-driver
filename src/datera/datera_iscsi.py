@@ -113,13 +113,17 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         2.6.0 - Api 2.2 support
         2.6.1 - Glance interoperability fix
         2.7.0 - IOPS/GB and BW/GB settings, driver level overrides
+                (API 2.1+ only)
         2.7.2 - Allowing DF: QoS Spec prefix, QoS type leak bugfix
         2.7.3 - Fixed bug in clone_image where size was not set correctly
         2.7.4 - Fix for create_tenant incorrect API call
                 Temporary fix for DAT-15931
         2.7.5 - Removed "force" parameter from /initiators v2.1 API requests
+        2.8.0 - iops_per_gb and bandwidth_per_gb are now limited by
+                total_iops_max and total_bandwidth_max (API 2.1+ only)
+                Bugfix for cinder retype with online volume
     """
-    VERSION = '2.7.5'
+    VERSION = '2.8.0'
 
     CI_WIKI_NAME = "datera-ci"
 
@@ -503,7 +507,8 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
               "give a 1 GB volume 100 IOPS, but a 10 GB volume 1000 IOPS. "
               "A setting of '0' is unlimited.  This value is applied to "
               "total_iops_max and will be overridden by total_iops_max if "
-              "set."),
+              "iops_per_gb is set and a large enough volume is provisioned "
+              "which would exceed total_iops_max"),
             "integer",
             minimum=0,
             default=int(self.defaults.get('iops_per_gb', 0)))
@@ -517,7 +522,8 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
               "will give a 1 GB volume 100 KiB/s bandwidth, but a 10 GB "
               "volume 1000 KiB/s bandwidth. A setting of '0' is unlimited. "
               "This value is applied to total_bandwidth_max and will be "
-              "overridden by total_bandwidth_max if set."),
+              "overridden by total_bandwidth_max if set and a large enough "
+              "volume is provisioned which woudl exceed total_bandwidth_max"),
             "integer",
             minimum=0,
             default=int(self.defaults.get('bandwidth_per_gb', 0)))
