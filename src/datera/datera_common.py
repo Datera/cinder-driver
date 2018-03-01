@@ -262,7 +262,7 @@ def _get_policies_for_volume_type(driver, volume_type):
     # Handle case of volume with no type.  We still want the
     # specified defaults from above
     if volume_type:
-        specs = volume_type.get('extra_specs')
+        specs = volume_type.get('extra_specs', {})
     else:
         specs = {}
 

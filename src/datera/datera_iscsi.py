@@ -122,8 +122,9 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         2.8.0 - iops_per_gb and bandwidth_per_gb are now limited by
                 total_iops_max and total_bandwidth_max (API 2.1+ only)
                 Bugfix for cinder retype with online volume
+        2.8.1 - Bugfix for missing default dict during retype
     """
-    VERSION = '2.8.0'
+    VERSION = '2.8.1'
 
     CI_WIKI_NAME = "datera-ci"
 
