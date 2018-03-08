@@ -123,8 +123,9 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
                 total_iops_max and total_bandwidth_max (API 2.1+ only)
                 Bugfix for cinder retype with online volume
         2.8.1 - Bugfix for missing default dict during retype
+        2.8.2 - Updated most retype operations to not detach volume
     """
-    VERSION = '2.8.1'
+    VERSION = '2.8.2'
 
     CI_WIKI_NAME = "datera-ci"
 

@@ -564,6 +564,15 @@ class DateraApi(object):
                   "Diff: %(diff)s\n"
                   "Host: %(host)s\n", {'volume': volume, 'new_type': new_type,
                                        'diff': diff, 'host': host})
+
+        def _put(vol_params, tenant):
+            url = datc.URL_TEMPLATES['vol_inst'](
+                old_pol['default_storage_name'],
+                old_pol['default_volume_name']).format(
+                    datc._get_name(volume['id']))
+            self._issue_api_request(
+                url, method='put', body=vol_params,
+                api_version=API_VERSION, tenant=tenant)
         # We'll take the fast route only if the types share the same backend
         # And that backend matches this driver
         old_pol = self._get_policies_for_resource(volume)
@@ -578,21 +587,29 @@ class DateraApi(object):
                     "unsupported.  Type1: %s, Type2: %s",
                     volume['volume_type_id'], new_type)
 
+            if old_pol.get('acl_allow_all') != new_pol.get('acl_allow_all'):
+                LOG.warning(
+                    "Changing acl_allow_all unsupported for fast retyping"
+                    "Type1: %s, Type2: %s", volume['volume_type_id'], new_type)
+
             tenant = self._create_tenant_2_2(volume)
             self._update_qos_2_2(volume, new_pol, tenant, clear_old=True)
-            with self._offline_flip_2_2(volume, tenant):
+            # Only replica_count ip_pool requires offlining the app_instance
+            if (new_pol['replica_count'] != old_pol['replica_count'] or
+                    new_pol['ip_pool'] != old_pol['ip_pool']):
+                with self._offline_flip_2_2(volume, tenant):
+                    vol_params = (
+                        {
+                            'placement_mode': new_pol['placement_mode'],
+                            'replica_count': new_pol['replica_count'],
+                        })
+                    _put(vol_params, tenant)
+            elif new_pol['placement_mode'] != old_pol['placement_mode']:
                 vol_params = (
                     {
                         'placement_mode': new_pol['placement_mode'],
-                        'replica_count': new_pol['replica_count'],
                     })
-                url = datc.URL_TEMPLATES['vol_inst'](
-                    old_pol['default_storage_name'],
-                    old_pol['default_volume_name']).format(
-                        datc._get_name(volume['id']))
-                self._issue_api_request(
-                    url, method='put', body=vol_params,
-                    api_version=API_VERSION, tenant=tenant)
+                _put(vol_params, tenant)
             return True
 
         else:
@@ -893,6 +910,8 @@ class DateraApi(object):
                     'volume_id': vol['id']}
         self._create_snapshot_2_2(snapshot)
         self._update_metadata(vol, {'type': 'cached_image'})
+        # Cloning offline AI is ~4 seconds faster than cloning online AI
+        self._detach_volume_2_2(None, vol)
 
     def _image_accessible(self, volume, image_meta):
         # Determine if image is accessible by current project
@@ -1210,7 +1229,7 @@ class DateraApi(object):
             tenant=tenant)
 
     @contextlib.contextmanager
-    def _offline_flip_2_2(self, volume, tenant):
+    def _detach_flip_2_2(self, volume, tenant):
         # Offline App Instance, if necessary
         reonline = False
         app_inst = self._issue_api_request(
@@ -1224,3 +1243,21 @@ class DateraApi(object):
         # Online Volume, if it was online before
         if reonline:
             self._create_export_2_2(None, volume, None)
+
+    @contextlib.contextmanager
+    def _offline_flip_2_2(self, volume, tenant):
+        reonline = False
+        app_inst = self._issue_api_request(
+            datc.URL_TEMPLATES['ai_inst']().format(
+                datc._get_name(volume['id'])),
+            api_version=API_VERSION, tenant=tenant)
+        if app_inst['data']['admin_state'] == 'online':
+            reonline = True
+        data = {'admin_state': 'offline'}
+        self._issue_api_request(datc.URL_TEMPLATES['ai_inst']().format(
+            datc._get_name(volume['id'])), method='put', body=data)
+        yield
+        if reonline:
+            data = {'admin_state': 'online'}
+            self._issue_api_request(datc.URL_TEMPLATES['ai_inst']().format(
+                datc._get_name(volume['id'])), method='put', body=data)
