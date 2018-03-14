@@ -1253,9 +1253,11 @@ class DateraApi(object):
             reonline = True
         data = {'admin_state': 'offline'}
         self._issue_api_request(datc.URL_TEMPLATES['ai_inst']().format(
-            datc._get_name(volume['id'])), method='put', body=data)
+            datc._get_name(volume['id'])), method='put', body=data,
+            api_version=API_VERSION)
         yield
         if reonline:
             data = {'admin_state': 'online'}
             self._issue_api_request(datc.URL_TEMPLATES['ai_inst']().format(
-                datc._get_name(volume['id'])), method='put', body=data)
+                datc._get_name(volume['id'])), method='put', body=data,
+                api_version=API_VERSION)

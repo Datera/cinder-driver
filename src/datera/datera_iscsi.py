@@ -126,8 +126,9 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         2.8.2 - Updated most retype operations to not detach volume
         2.8.3 - Bugfix for not allowing fast clones for shared/community
                 volumes
+        2.8.4 - Fixed missing API version pinning in _offline_flip
     """
-    VERSION = '2.8.3'
+    VERSION = '2.8.4'
 
     CI_WIKI_NAME = "datera-ci"
 
