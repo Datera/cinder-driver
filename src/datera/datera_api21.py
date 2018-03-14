@@ -915,7 +915,7 @@ class DateraApi(object):
         # Determine if image is accessible by current project
         public = False
         visibility = image_meta.get('visibility', None)
-        if visibility and visibility == 'public':
+        if visibility and visibility in ['public', 'shared', 'community']:
             public = True
         elif image_meta.get('is_public', False):
             public = True
