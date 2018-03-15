@@ -31,9 +31,11 @@ from six.moves import http_client
 from cinder import context
 from cinder import exception
 from cinder.i18n import _
+from cinder.image import glance
 from cinder.volume import qos_specs
 from cinder.volume import volume_types
 
+from glanceclient import exc as glance_exc
 
 LOG = logging.getLogger(__name__)
 OS_PREFIX = "OS-"
@@ -298,6 +300,54 @@ def _get_policies_for_volume_type(driver, volume_type):
     return policies
 
 
+def _image_accessible(driver, context, volume, image_meta):
+    # Determine if image is accessible by current project
+    pid = volume.get('project_id', '')
+    public = False
+    visibility = image_meta.get('visibility', None)
+    LOG.debug("Image %(image)s visibility: %(vis)s",
+              {"image": image_meta['id'], "vis": visibility})
+    if visibility and visibility in ['public', 'community']:
+        public = True
+    elif visibility and visibility in ['shared', 'private']:
+        # Do membership check.  Newton and before didn't have a 'shared'
+        # visibility option, so we have to do this check for 'private'
+        # as well
+        gclient = glance.get_default_image_service()
+        members = []
+        # list_members is only available in Rocky+
+        try:
+            members = gclient.list_members(context, image_meta['id'])
+        except AttributeError:
+            # This is the fallback method for the same query
+            try:
+                members = gclient._client.call(context,
+                                               'list',
+                                               controller='image_members',
+                                               image_id=image_meta['id'])
+            except glance_exc.HTTPForbidden as e:
+                LOG.warn(e)
+        except glance_exc.HTTPForbidden as e:
+            LOG.warn(e)
+        members = list(members)
+        LOG.debug("Shared image %(image)s members: %(members)s",
+                  {"image": image_meta['id'], "members": members})
+        for member in members:
+            if (member['member_id'] == pid and
+                    member['status'] == 'accepted'):
+                public = True
+                break
+        if image_meta.get('is_public', False):
+            public = True
+        else:
+            if image_meta.get('owner', '') == pid:
+                public = True
+    if not public:
+        LOG.warning("Requested image is not "
+                    "accessible by current Project.")
+    return public
+
+
 # ================
 # = API Requests =
 # ================
@@ -488,6 +538,7 @@ def register_driver(driver):
                  _get_volume_type_obj,
                  _get_policies_for_resource,
                  _get_policies_for_volume_type,
+                 _image_accessible,
                  _request,
                  _raise_response,
                  _handle_bad_status,

@@ -127,8 +127,9 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         2.8.3 - Bugfix for not allowing fast clones for shared/community
                 volumes
         2.8.4 - Fixed missing API version pinning in _offline_flip
+        2.8.5 - Membership check for fast image cloning. Metadata API pinning
     """
-    VERSION = '2.8.4'
+    VERSION = '2.8.5'
 
     CI_WIKI_NAME = "datera-ci"
 

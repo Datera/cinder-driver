@@ -781,7 +781,7 @@ class DateraApi(object):
         # We're not going to fast image clone if the feature is not enabled
         # and/or we can't reach the image being requested
         if (not self.image_cache or
-                not self._image_accessible(volume, image_meta)):
+                not self._image_accessible(context, volume, image_meta)):
             return None, False
         # Check to make sure we're working with a valid volume type
         try:
@@ -807,7 +807,7 @@ class DateraApi(object):
         cached = self._vol_exists_2_1(src_vol)
 
         if cached:
-            metadata = self._get_metadata(src_vol)
+            metadata = self._get_metadata_2_1(src_vol)
             # Check to see if the master image has changed since we created
             # The cached version
             ts = self._get_vol_timestamp(src_vol)
@@ -907,25 +907,9 @@ class DateraApi(object):
         snapshot = {'id': str(uuid.uuid4()),
                     'volume_id': vol['id']}
         self._create_snapshot_2_1(snapshot)
-        self._update_metadata(vol, {'type': 'cached_image'})
+        self._update_metadata_2_1(vol, {'type': 'cached_image'})
         # Cloning offline AI is ~4 seconds faster than cloning online AI
         self._detach_volume_2_1(None, vol)
-
-    def _image_accessible(self, volume, image_meta):
-        # Determine if image is accessible by current project
-        public = False
-        visibility = image_meta.get('visibility', None)
-        if visibility and visibility in ['public', 'shared', 'community']:
-            public = True
-        elif image_meta.get('is_public', False):
-            public = True
-        else:
-            if image_meta['owner'] == volume['project_id']:
-                public = True
-        if not public:
-            LOG.warning("Requested image is not "
-                        "accessible by current Project.")
-        return public
 
     def _get_vol_timestamp(self, volume):
         tenant = self._create_tenant_2_1()
@@ -1211,14 +1195,14 @@ class DateraApi(object):
     # = Metadata =
     # ============
 
-    def _get_metadata(self, volume):
+    def _get_metadata_2_1(self, volume):
         tenant = self._create_tenant_2_1(volume)
         url = datc.URL_TEMPLATES['ai_inst']().format(
             datc._get_name(volume['id'])) + "/metadata"
         return self._issue_api_request(url, api_version=API_VERSION,
                                        tenant=tenant)['data']
 
-    def _update_metadata(self, volume, keys):
+    def _update_metadata_2_1(self, volume, keys):
         tenant = self._create_tenant_2_1(volume)
         url = datc.URL_TEMPLATES['ai_inst']().format(
             datc._get_name(volume['id'])) + "/metadata"
