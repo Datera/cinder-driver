@@ -131,7 +131,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
                 volumes
         2.8.4 - Fixed missing API version pinning in _offline_flip
         2.8.5 - Membership check for fast image cloning. Metadata API pinning
-        2.8.6 - Added LDAP support
+        2.8.6 - Added LDAP support and CHAP support
     """
     VERSION = '2.8.6'
 
@@ -167,6 +167,10 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         self.image_cache = self.configuration.datera_enable_image_cache
         self.image_type = self.configuration.datera_image_cache_volume_type_id
         self.thread_local = threading.local()
+
+        self.use_chap_auth = self.configuration.use_chap_auth
+        self.chap_username = self.configuration.chap_username
+        self.chap_password = self.configuration.chap_password
 
         backend_name = self.configuration.safe_get(
             'volume_backend_name')
