@@ -300,6 +300,7 @@ class DateraApi(object):
             initiator_name = "OpenStack_{}_{}".format(
                 self.driver_prefix, str(uuid.uuid4())[:4])
             initiator_group = datc.INITIATOR_GROUP_PREFIX + str(uuid.uuid4())
+            # TODO(_alastor_): actually check for existing initiator
             found = False
             initiator = connector['initiator']
             if not found:
@@ -1024,6 +1025,9 @@ class DateraApi(object):
             'name': self.username,
             'password': self.password
         }
+
+        if self.ldap:
+            body['remote_server'] = self.ldap
 
         # Unset token now, otherwise potential expired token will be sent
         # along to be used for authorization when trying to login.

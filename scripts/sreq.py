@@ -7,8 +7,7 @@ import io
 import re
 import sys
 
-import arrow
-
+from sreq_common import OPERATORS, OPERATORS_FUNC
 
 try:
     import text_histogram
@@ -21,8 +20,9 @@ VERSION HISTORY:
     1.0.1 -- Addition of timestamp filtering
     1.1.0 -- Adding journalctl compatibility
     1.2.0 -- Added ability to leave off field in --filter to check all fields
+    1.2.1 -- Moved some stuff out into sreq_common
 """
-VERSION = "v1.2.0"
+VERSION = "v1.2.1"
 
 USAGE = """
 
@@ -164,35 +164,6 @@ AD_VALS = {"TIME": 0,
            "VMID": 3,
            "DEVICE": 4,
            "HOST": 5}
-
-OPERATORS = {"=": "X equals Y",
-             ">": "X greater than Y",
-             "<": "X less than Y",
-             ">=": "X greather than or equals Y",
-             "<=": "X less than or equals Y",
-             "##": "X contains Y",
-             "@@": "Timestamp X >= Timestamp Y",
-             "**": "Timestamp X <= Timestamp Y"}
-
-
-def timestamp_filter_before(x, y):
-    tx, ty = arrow.get(x), arrow.get(y)
-    return tx <= ty
-
-
-def timestamp_filter_after(x, y):
-    tx, ty = arrow.get(x), arrow.get(y)
-    return tx >= ty
-
-
-OPERATORS_FUNC = {"=": lambda x, y: str(x) == str(y),
-                  ">": lambda x, y: float(x) > float(y),
-                  "<": lambda x, y: float(x) < float(y),
-                  ">=": lambda x, y: float(x) >= float(y),
-                  "<=": lambda x, y: float(x) <= float(y),
-                  "##": lambda x, y: str(y) in str(x),
-                  "@@": timestamp_filter_after,
-                  "**": timestamp_filter_before}
 
 
 def _sort_helper(x):

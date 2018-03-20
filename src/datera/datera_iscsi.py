@@ -42,6 +42,9 @@ d_opts = [
                default='2',
                deprecated_for_removal=True,
                help='Datera API version.'),
+    cfg.StrOpt('datera_ldap_server',
+               default=None,
+               help='LDAP authentication server'),
     cfg.IntOpt('datera_503_timeout',
                default='120',
                help='Timeout for HTTP 503 retry messages'),
@@ -128,8 +131,9 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
                 volumes
         2.8.4 - Fixed missing API version pinning in _offline_flip
         2.8.5 - Membership check for fast image cloning. Metadata API pinning
+        2.8.6 - Added LDAP support
     """
-    VERSION = '2.8.5'
+    VERSION = '2.8.6'
 
     CI_WIKI_NAME = "datera-ci"
 
@@ -140,6 +144,7 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         self.configuration.append_config_values(d_opts)
         self.username = self.configuration.san_login
         self.password = self.configuration.san_password
+        self.ldap = self.configuration.datera_ldap_server
         self.cluster_stats = {}
         self.datera_api_token = None
         self.interval = self.configuration.datera_503_interval

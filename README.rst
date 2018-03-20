@@ -40,6 +40,8 @@ Datera Volume Driver Version History
      - IOPS/GB and BW/GB settings, driver level overrides
    * - 2.7.2
      - Allowing DF: QoS Spec prefix, QoS type leak bugfix
+   * - 2.8.0
+     - LDAP Support
 
 ---------------------------------
 Volume Driver Cinder.conf Options
@@ -59,6 +61,8 @@ Volume Driver Cinder.conf Options
      - (Int) Timeout for HTTP 503 retry messages
    * - ``datera_503_interval`` = ``5``
      - (Int) Interval between 503 retries
+   * - ``datera_ldap_server`` = ``None``
+     - (String) LDAP authentication server
    * - ``datera_debug`` = ``False``
      - (Bool) True to set function arg and return logging
    * - ``datera_debug_replica_count_override`` = ``False``

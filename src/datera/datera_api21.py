@@ -1023,6 +1023,9 @@ class DateraApi(object):
             'password': self.password
         }
 
+        if self.ldap:
+            body['remote_server'] = self.ldap
+
         # Unset token now, otherwise potential expired token will be sent
         # along to be used for authorization when trying to login.
         self.datera_api_token = None
