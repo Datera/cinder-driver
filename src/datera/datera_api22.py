@@ -1212,6 +1212,22 @@ class DateraApi(object):
             "access_network_ip_pools/{}".format(pool),
             api_version=API_VERSION, tenant=tenant)['data']['path']
 
+    # ====================
+    # = Volume Migration =
+    # ====================
+
+    def _update_migrated_volume_2_2(self, context, volume, new_volume,
+                                    volume_status):
+        """Rename the newly created volume to the original volume so we
+           can find it correctly"""
+        tenant = self._create_tenant_2_2(volume)
+        url = datc.URL_TEMPLATES['ai_inst']().format(
+            datc._get_name(new_volume['id']))
+        data = {'name': datc._get_name(volume['id'])}
+        self._issue_api_request(url, method='put', api_version=API_VERSION,
+                                tenant=tenant, body=data)
+        return {'_name_id': None}
+
     # ============
     # = Metadata =
     # ============

@@ -42,6 +42,22 @@ Datera Volume Driver Version History
      - Allowing DF: QoS Spec prefix, QoS type leak bugfix
    * - 2.8.0
      - LDAP Support
+   * - 2.8.1
+     - Bugfix for missing default dict during retype
+   * - 2.8.2
+     - Updated most retype operations to not detach volume
+   * - 2.8.3
+     - Bugfix for not allowing fast clones for shared/community volumes
+   * - 2.8.4
+     - Fixed missing API version pinning in _offline_flip
+   * - 2.8.5
+     - Membership check for fast image cloning. Metadata API pinning
+   * - 2.8.6
+     - Added LDAP support and CHAP support
+   * - 2.8.7
+     - Bugfix for missing tenancy calls in offline_flip
+   * - 2.9.0
+     - Volumes now correctly renamed during backend migration. Implemented update_migrated_volume (API 2.1+ only)
 
 ---------------------------------
 Volume Driver Cinder.conf Options
@@ -53,8 +69,18 @@ Volume Driver Cinder.conf Options
 
    * - Configuration option = Default value
      - Description
-   * - ``datera_api_port`` = ``7717``
-     - (String) The path to the client certificate for verification, if the driver supports it.
+   * - ``san_ip`` = ``None``
+     - (String) The IP address of the Datera management interface (REQUIRED)
+   * - ``san_login`` = ``None``
+     - (String) The username of the Datera account (REQUIRED)
+   * - ``san_password`` = ``None``
+     - (String) The password of the Datera account (REQUIRED)
+   * - ``use_chap_auth`` = ``False``
+     - (Bool) Set to True for CHAP authentication
+   * - ``chap_username`` = ``None``
+     - (String) Username to use for CHAP authentication with ISCSI volumes
+   * - ``chap_password`` = ``None``
+     - (String) Password to use for CHAP authentication with ISCSI volumes
    * - ``driver_client_cert_key`` = ``None``
      - (String) The path to the client certificate key for verification, if the driver supports it.
    * - ``datera_503_timeout`` = ``120``

@@ -37,6 +37,7 @@ LOG = logging.getLogger(__name__)
 d_opts = [
     cfg.StrOpt('datera_api_port',
                default='7717',
+               deprecated_for_removal=True,
                help='Datera API port.'),
     cfg.StrOpt('datera_api_version',
                default='2',
@@ -133,8 +134,10 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         2.8.5 - Membership check for fast image cloning. Metadata API pinning
         2.8.6 - Added LDAP support and CHAP support
         2.8.7 - Bugfix for missing tenancy calls in offline_flip
+        2.9.0 - Volumes now correctly renamed during backend migration.
+                Implemented update_migrated_volume (API 2.1+ only)
     """
-    VERSION = '2.8.7'
+    VERSION = '2.9.0'
 
     CI_WIKI_NAME = "datera-ci"
 
@@ -417,6 +420,27 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
     def clone_image(self, context, volume, image_location, image_meta,
                     image_service):
         """Clone an existing image volume."""
+        pass
+
+    # ====================
+    # = Volume Migration =
+    # ====================
+
+    @datc._api_lookup
+    def update_migrated_volume(self, context, volume, new_volume,
+                               volume_status):
+        """Return model update for migrated volume.
+        Each driver implementing this method needs to be responsible for the
+        values of _name_id and provider_location. If None is returned or either
+        key is not set, it means the volume table does not need to change the
+        value(s) for the key(s).
+        The return format is {"_name_id": value, "provider_location": value}.
+        :param volume: The original volume that was migrated to this backend
+        :param new_volume: The migration volume object that was created on
+                           this backend as part of the migration process
+        :param original_volume_status: The status of the original volume
+        :returns: model_update to update DB with any needed changes
+        """
         pass
 
     # ================
