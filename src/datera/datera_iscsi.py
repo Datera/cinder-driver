@@ -132,8 +132,9 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         2.8.4 - Fixed missing API version pinning in _offline_flip
         2.8.5 - Membership check for fast image cloning. Metadata API pinning
         2.8.6 - Added LDAP support and CHAP support
+        2.8.7 - Bugfix for missing tenancy calls in offline_flip
     """
-    VERSION = '2.8.6'
+    VERSION = '2.8.7'
 
     CI_WIKI_NAME = "datera-ci"
 

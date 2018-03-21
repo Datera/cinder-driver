@@ -403,12 +403,12 @@ class DateraApi(object):
         # TODO(_alastor_): Make acl cleaning multi-attach aware
         self._clean_acl_2_2(volume, tenant)
 
-    def _check_for_acl_2_2(self, initiator_path):
+    def _check_for_acl_2_2(self, initiator_path, tenant):
         """Returns True if an acl is found for initiator_path """
         # TODO(_alastor_) when we get a /initiators/:initiator/acl_policies
         # endpoint use that instead of this monstrosity
         initiator_groups = self._issue_api_request(
-            "initiator_groups", api_version=API_VERSION)
+            "initiator_groups", api_version=API_VERSION, tenant=tenant)
         for ig, igdata in initiator_groups.items():
             if initiator_path in igdata['members']:
                 LOG.debug("Found initiator_group: %s for initiator: %s",
@@ -1259,10 +1259,10 @@ class DateraApi(object):
         data = {'admin_state': 'offline'}
         self._issue_api_request(datc.URL_TEMPLATES['ai_inst']().format(
             datc._get_name(volume['id'])), method='put', body=data,
-            api_version=API_VERSION)
+            api_version=API_VERSION, tenant=tenant)
         yield
         if reonline:
             data = {'admin_state': 'online'}
             self._issue_api_request(datc.URL_TEMPLATES['ai_inst']().format(
                 datc._get_name(volume['id'])), method='put', body=data,
-                api_version=API_VERSION)
+                api_version=API_VERSION, tenant=tenant)
