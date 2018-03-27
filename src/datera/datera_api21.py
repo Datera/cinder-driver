@@ -809,6 +809,13 @@ class DateraApi(object):
             raise ValueError("Option datera_image_cache_volume_type_id must be"
                              " set to a valid volume_type id")
 
+        # Check image format
+        fmt = image_meta.get('disk_format', '')
+        if fmt.lower() != 'raw':
+            LOG.debug("Image format is not RAW, image requires conversion "
+                      "before clone.  Image format: [%s]", fmt)
+            return None, False
+
         LOG.debug("Starting fast image clone")
         # TODO(_alastor_): determine if Datera is already an image backend
         # for this request and direct clone instead of caching

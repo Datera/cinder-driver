@@ -135,7 +135,8 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         2.8.6 - Added LDAP support and CHAP support
         2.8.7 - Bugfix for missing tenancy calls in offline_flip
         2.9.0 - Volumes now correctly renamed during backend migration.
-                Implemented update_migrated_volume (API 2.1+ only)
+                Implemented update_migrated_volume (API 2.1+ only),
+                Prevent non-raw image cloning
     """
     VERSION = '2.9.0'
 
