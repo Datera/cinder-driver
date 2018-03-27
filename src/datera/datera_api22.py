@@ -369,14 +369,15 @@ class DateraApi(object):
                                         api_version=API_VERSION,
                                         tenant=tenant)
         if self.use_chap_auth:
-            auth_url = (datc.URL_TEMPLATES['si']() + "/{}/auth").format(
-                datc._get_name(volume['id']), si['name'])
-            data = {'type': 'chap',
-                    'target_user_name': self.chap_username,
-                    'target_pswd': self.chap_password}
-            self._issue_api_request(
-                auth_url, method="put", api_version=API_VERSION, tenant=tenant,
-                body=data, sensitive=True)
+            for si in storage_instances['data']:
+                auth_url = (datc.URL_TEMPLATES['si']() + "/{}/auth").format(
+                    datc._get_name(volume['id']), si['name'])
+                data = {'type': 'chap',
+                        'target_user_name': self.chap_username,
+                        'target_pswd': self.chap_password}
+                self._issue_api_request(
+                    auth_url, method="put", api_version=API_VERSION,
+                    tenant=tenant, body=data, sensitive=True)
         # Check to ensure we're ready for go-time
         self._si_poll_2_2(volume, policies, tenant)
 
