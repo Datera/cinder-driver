@@ -1295,6 +1295,8 @@ class DateraApi(object):
                 api_version=API_VERSION, tenant=tenant)
 
     def _add_vol_meta(self, volume, connector=None):
+        if not self.do_metadata:
+            return
         metadata = {'host': volume.get('host', ''),
                     'display_name': volume.get('display_name', ''),
                     'bootable': str(volume.get('bootable', False)),
