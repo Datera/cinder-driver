@@ -76,6 +76,10 @@ d_opts = [
     cfg.BoolOpt('datera_disable_profiler',
                 default=False,
                 help="Set to True to disable profiling in the Datera driver"),
+    cfg.BoolOpt('datera_disable_extended_metadata',
+                default=False,
+                help="Set to True to disable sending additional metadata to "
+                     "the Datera backend"),
     cfg.DictOpt('datera_volume_type_defaults',
                 default={},
                 help="Settings here will be used as volume-type defaults if "
@@ -137,8 +141,11 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         2.9.0 - Volumes now correctly renamed during backend migration.
                 Implemented update_migrated_volume (API 2.1+ only),
                 Prevent non-raw image cloning
+        2.9.1 - Added extended metadata attributes during volume creation
+                and attachment.  Added datera_disable_extended_metadata option
+                to disable it.
     """
-    VERSION = '2.9.0'
+    VERSION = '2.9.1'
 
     CI_WIKI_NAME = "datera-ci"
 
@@ -169,6 +176,8 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         self.api_cache = []
         self.api_timeout = 0
         self.do_profile = not self.configuration.datera_disable_profiler
+        self.do_metadata = (
+            not self.configuration.datera_disable_extended_metadata)
         self.image_cache = self.configuration.datera_enable_image_cache
         self.image_type = self.configuration.datera_image_cache_volume_type_id
         self.thread_local = threading.local()

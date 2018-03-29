@@ -99,6 +99,7 @@ class DateraApi(object):
             api_version=API_VERSION,
             tenant=tenant)
         self._update_qos_2_1(volume, policies, tenant)
+        self._add_vol_meta(volume)
 
     # =================
     # = Extend Volume =
@@ -159,6 +160,7 @@ class DateraApi(object):
 
         if volume['size'] > src_vref['size']:
             self._extend_volume_2_1(volume, volume['size'])
+        self._add_vol_meta(volume)
 
     # =================
     # = Delete Volume =
@@ -377,6 +379,7 @@ class DateraApi(object):
                     tenant=tenant, body=data, sensitive=True)
         # Check to ensure we're ready for go-time
         self._si_poll_2_1(volume, policies, tenant)
+        self._add_vol_meta(volume, connector=connector)
 
     # =================
     # = Detach Volume =
@@ -566,6 +569,7 @@ class DateraApi(object):
 
         if (volume['size'] > snapshot['volume_size']):
             self._extend_volume_2_1(volume, volume['size'])
+        self._add_vol_meta(volume)
 
     # ==========
     # = Retype =
@@ -624,6 +628,7 @@ class DateraApi(object):
                         'placement_mode': new_pol['placement_mode'],
                     })
                 _put(vol_params, tenant)
+            self._add_vol_meta(volume)
             return True
 
         else:
@@ -661,6 +666,7 @@ class DateraApi(object):
         self._issue_api_request(datc.URL_TEMPLATES['ai_inst']().format(
             app_inst_name), method='put', body=data,
             api_version=API_VERSION, tenant=tenant)
+        self._add_vol_meta(volume)
 
     # ===================
     # = Manage Get Size =
@@ -1287,3 +1293,15 @@ class DateraApi(object):
             self._issue_api_request(datc.URL_TEMPLATES['ai_inst']().format(
                 datc._get_name(volume['id'])), method='put', body=data,
                 api_version=API_VERSION, tenant=tenant)
+
+    def _add_vol_meta(self, volume, connector=None):
+        if not self.do_metadata:
+            return
+        metadata = {'host': volume.get('host', ''),
+                    'display_name': volume.get('display_name', ''),
+                    'bootable': str(volume.get('bootable', False)),
+                    'availability_zone': volume.get('availability_zone', '')}
+        if connector:
+            metadata.update(connector)
+        LOG.debug("Adding volume metadata: %s", metadata)
+        self._update_metadata_2_2(volume, metadata)
