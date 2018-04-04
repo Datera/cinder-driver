@@ -186,7 +186,7 @@ class DateraApi(object):
     # =================
 
     def _ensure_export_2_1(self, context, volume, connector=None):
-        self.create_export(context, volume, connector)
+        pass
 
     # =========================
     # = Initialize Connection =
