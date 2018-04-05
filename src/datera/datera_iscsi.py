@@ -26,7 +26,6 @@ from cinder.i18n import _
 from cinder import utils
 from cinder.volume.drivers.san import san
 
-import cinder.volume.drivers.datera.datera_api2 as api2
 import cinder.volume.drivers.datera.datera_api21 as api21
 import cinder.volume.drivers.datera.datera_api22 as api22
 import cinder.volume.drivers.datera.datera_common as datc
@@ -99,8 +98,7 @@ CONF.register_opts(d_opts)
 
 
 @six.add_metaclass(utils.TraceWrapperWithABCMetaclass)
-class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
-                   api22.DateraApi):
+class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
 
     """The OpenStack Datera Driver
 
@@ -145,8 +143,10 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
                 and attachment.  Added datera_disable_extended_metadata option
                 to disable it.
         2.9.2 - Made ensure_export a no-op.  Removed usage of initiator-groups
+        2018.4.5.0 - Switch to new date-based versioning scheme.  Removed v2
+                     API support
     """
-    VERSION = '2.9.2'
+    VERSION = '2018.4.5.0'
 
     CI_WIKI_NAME = "datera-ci"
 
@@ -484,27 +484,6 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
     @datc._api_lookup
     def create_tenant(self):
         pass
-
-    # =======
-    # = QoS =
-    # =======
-
-    def _update_qos(self, resource, policies):
-        url = datc.URL_TEMPLATES['vol_inst'](
-            policies['default_storage_name'],
-            policies['default_volume_name']) + '/performance_policy'
-        url = url.format(datc._get_name(resource['id']))
-        type_id = resource.get('volume_type_id', None)
-        if type_id is not None:
-            # Filter for just QOS policies in result. All of their keys
-            # should end with "max"
-            fpolicies = {k: int(v) for k, v in
-                         policies.items() if k.endswith("max")}
-            # Filter all 0 values from being passed
-            fpolicies = dict(filter(lambda _v: _v[1] > 0, fpolicies.items()))
-            if fpolicies:
-                self._issue_api_request(url, 'post', body=fpolicies,
-                                        api_version='2')
 
     def _get_lunid(self):
         return 0

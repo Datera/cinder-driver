@@ -128,7 +128,7 @@ class DateraApi(object):
             data = {
                 'size': new_size
             }
-            store_name, vol_name = self._scrape_template(policies)
+            store_name, vol_name = self._scrape_template_2_2(policies)
             self._issue_api_request(
                 datc.URL_TEMPLATES['vol_inst'](
                     store_name, vol_name).format(app_inst),
@@ -144,7 +144,7 @@ class DateraApi(object):
     def _create_cloned_volume_2_2(self, volume, src_vref):
         policies = self._get_policies_for_resource(volume)
         tenant = self._create_tenant_2_2(volume)
-        store_name, vol_name = self._scrape_template(policies)
+        store_name, vol_name = self._scrape_template_2_2(policies)
 
         src = "/" + datc.URL_TEMPLATES['vol_inst'](
             store_name, vol_name).format(datc._get_name(src_vref['id']))
@@ -266,7 +266,7 @@ class DateraApi(object):
             url, method='put', body=data, api_version=API_VERSION,
             tenant=tenant)
         policies = self._get_policies_for_resource(volume)
-        store_name, _ = self._scrape_template(policies)
+        store_name, _ = self._scrape_template_2_2(policies)
         if connector and connector.get('ip'):
             # Case where volume_type has non default IP Pool info
             if policies['ip_pool'] != 'default':
@@ -412,7 +412,7 @@ class DateraApi(object):
     def _clean_acl_2_2(self, volume, tenant):
         policies = self._get_policies_for_resource(volume)
 
-        store_name, _ = self._scrape_template(policies)
+        store_name, _ = self._scrape_template_2_2(policies)
 
         acl_url = (datc.URL_TEMPLATES["si_inst"](
             store_name) + "/acl_policy").format(datc._get_name(volume['id']))
@@ -448,7 +448,7 @@ class DateraApi(object):
         tenant = self._create_tenant_2_2(snapshot)
         policies = self._get_policies_for_resource(snapshot)
 
-        store_name, vol_name = self._scrape_template(policies)
+        store_name, vol_name = self._scrape_template_2_2(policies)
 
         url_template = datc.URL_TEMPLATES['vol_inst'](
             store_name, vol_name) + '/snapshots'
@@ -471,7 +471,7 @@ class DateraApi(object):
         tenant = self._create_tenant_2_2(snapshot)
         policies = self._get_policies_for_resource(snapshot)
 
-        store_name, vol_name = self._scrape_template(policies)
+        store_name, vol_name = self._scrape_template_2_2(policies)
 
         snap_temp = datc.URL_TEMPLATES['vol_inst'](
             store_name, vol_name) + '/snapshots'
@@ -516,7 +516,7 @@ class DateraApi(object):
         tenant = self._create_tenant_2_2(volume)
         policies = self._get_policies_for_resource(snapshot)
 
-        store_name, vol_name = self._scrape_template(policies)
+        store_name, vol_name = self._scrape_template_2_2(policies)
 
         snap_temp = datc.URL_TEMPLATES['vol_inst'](
             store_name, vol_name) + '/snapshots'
@@ -926,7 +926,7 @@ class DateraApi(object):
     def _get_vol_timestamp_2_2(self, volume):
         tenant = self._create_tenant_2_2()
         policies = self._get_policies_for_resource(volume)
-        store_name, vol_name = self._scrape_template(policies)
+        store_name, vol_name = self._scrape_template_2_2(policies)
 
         snap_temp = datc.URL_TEMPLATES['vol_inst'](
             store_name, vol_name) + '/snapshots'
@@ -1288,3 +1288,16 @@ class DateraApi(object):
             metadata.update(connector)
         LOG.debug("Adding volume metadata: %s", metadata)
         self._update_metadata_2_2(volume, metadata)
+
+    def _scrape_template_2_2(self, policies):
+        sname = policies['default_storage_name']
+        vname = policies['default_volume_name']
+
+        template = policies['template']
+        if template:
+            result = self._issue_api_request(
+                datc.URL_TEMPLATES['at']().format(template),
+                api_version=API_VERSION)
+            sname, st = list(result['storage_templates'].items())[0]
+            vname = list(st['volume_templates'].keys())[0]
+        return sname, vname

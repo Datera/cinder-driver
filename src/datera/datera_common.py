@@ -68,7 +68,7 @@ URL_TEMPLATES = {
 DEFAULT_SI_SLEEP = 1
 DEFAULT_SI_SLEEP_API_2 = 5
 DEFAULT_SNAP_SLEEP = 1
-API_VERSIONS = ["2", "2.1", "2.2"]
+API_VERSIONS = ["2.1", "2.2"]
 API_TIMEOUT = 20
 
 ###############
@@ -124,7 +124,7 @@ def _api_lookup(func):
         # supported API version
 
         # From the Datera box we've determined that it supports API
-        # versions ['2', '2.1']
+        # versions ['2.1', '2.2']
         # This is the original function call
         @_api_lookup
         def original_func(arg1, arg2):
@@ -424,7 +424,7 @@ def _handle_bad_status(driver,
 @_authenticated
 def _issue_api_request(driver, resource_url, method='get', body=None,
                        sensitive=False, conflict_ok=False,
-                       api_version='2', tenant=None):
+                       api_version=API_VERSIONS[0], tenant=None):
     """All API requests to Datera cluster go through this method.
 
     :param resource_url: the url of the resource

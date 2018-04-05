@@ -128,7 +128,7 @@ class DateraApi(object):
             data = {
                 'size': new_size
             }
-            store_name, vol_name = self._scrape_template(policies)
+            store_name, vol_name = self._scrape_template_2_1(policies)
             self._issue_api_request(
                 datc.URL_TEMPLATES['vol_inst'](
                     store_name, vol_name).format(app_inst),
@@ -144,7 +144,7 @@ class DateraApi(object):
     def _create_cloned_volume_2_1(self, volume, src_vref):
         policies = self._get_policies_for_resource(volume)
         tenant = self._create_tenant_2_1(volume)
-        store_name, vol_name = self._scrape_template(policies)
+        store_name, vol_name = self._scrape_template_2_1(policies)
 
         src = "/" + datc.URL_TEMPLATES['vol_inst'](
             store_name, vol_name).format(datc._get_name(src_vref['id']))
@@ -266,7 +266,7 @@ class DateraApi(object):
             url, method='put', body=data, api_version=API_VERSION,
             tenant=tenant)
         policies = self._get_policies_for_resource(volume)
-        store_name, _ = self._scrape_template(policies)
+        store_name, _ = self._scrape_template_2_1(policies)
         if connector and connector.get('ip'):
             # Case where volume_type has non default IP Pool info
             if policies['ip_pool'] != 'default':
@@ -395,7 +395,7 @@ class DateraApi(object):
     def _clean_acl_2_1(self, volume, tenant):
         policies = self._get_policies_for_resource(volume)
 
-        store_name, _ = self._scrape_template(policies)
+        store_name, _ = self._scrape_template_2_1(policies)
 
         acl_url = (datc.URL_TEMPLATES["si_inst"](
             store_name) + "/acl_policy").format(datc._get_name(volume['id']))
@@ -431,7 +431,7 @@ class DateraApi(object):
         tenant = self._create_tenant_2_1(snapshot)
         policies = self._get_policies_for_resource(snapshot)
 
-        store_name, vol_name = self._scrape_template(policies)
+        store_name, vol_name = self._scrape_template_2_1(policies)
 
         url_template = datc.URL_TEMPLATES['vol_inst'](
             store_name, vol_name) + '/snapshots'
@@ -454,7 +454,7 @@ class DateraApi(object):
         tenant = self._create_tenant_2_1(snapshot)
         policies = self._get_policies_for_resource(snapshot)
 
-        store_name, vol_name = self._scrape_template(policies)
+        store_name, vol_name = self._scrape_template_2_1(policies)
 
         snap_temp = datc.URL_TEMPLATES['vol_inst'](
             store_name, vol_name) + '/snapshots'
@@ -499,7 +499,7 @@ class DateraApi(object):
         tenant = self._create_tenant_2_1(volume)
         policies = self._get_policies_for_resource(snapshot)
 
-        store_name, vol_name = self._scrape_template(policies)
+        store_name, vol_name = self._scrape_template_2_1(policies)
 
         snap_temp = datc.URL_TEMPLATES['vol_inst'](
             store_name, vol_name) + '/snapshots'
@@ -806,7 +806,7 @@ class DateraApi(object):
             metadata = self._get_metadata_2_1(src_vol)
             # Check to see if the master image has changed since we created
             # The cached version
-            ts = self._get_vol_timestamp(src_vol)
+            ts = self._get_vol_timestamp_2_1(src_vol)
             mts = time.mktime(image_meta['updated_at'].timetuple())
             LOG.debug("Original image timestamp: %s, cache timestamp %s",
                       mts, ts)
@@ -907,10 +907,10 @@ class DateraApi(object):
         # Cloning offline AI is ~4 seconds faster than cloning online AI
         self._detach_volume_2_1(None, vol)
 
-    def _get_vol_timestamp(self, volume):
+    def _get_vol_timestamp_2_1(self, volume):
         tenant = self._create_tenant_2_1()
         policies = self._get_policies_for_resource(volume)
-        store_name, vol_name = self._scrape_template(policies)
+        store_name, vol_name = self._scrape_template_2_1(policies)
 
         snap_temp = datc.URL_TEMPLATES['vol_inst'](
             store_name, vol_name) + '/snapshots'
@@ -1272,3 +1272,16 @@ class DateraApi(object):
             metadata.update(connector)
         LOG.debug("Adding volume metadata: %s", metadata)
         self._update_metadata_2_2(volume, metadata)
+
+    def _scrape_template_2_1(self, policies):
+        sname = policies['default_storage_name']
+        vname = policies['default_volume_name']
+
+        template = policies['template']
+        if template:
+            result = self._issue_api_request(
+                datc.URL_TEMPLATES['at']().format(template),
+                api_version=API_VERSION)
+            sname, st = list(result['storage_templates'].items())[0]
+            vname = list(st['volume_templates'].keys())[0]
+        return sname, vname
