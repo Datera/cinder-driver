@@ -307,10 +307,10 @@ class DateraApi(object):
                 not policies['acl_allow_all']):
             initiator_name = "OpenStack_{}_{}".format(
                 self.driver_prefix, str(uuid.uuid4())[:4])
-            initiator_group = datc.INITIATOR_GROUP_PREFIX + str(uuid.uuid4())
             # TODO(_alastor_): actually check for existing initiator
             found = False
             initiator = connector['initiator']
+            initiator_path = "/initiators/{}".format(initiator)
             if not found:
                 # TODO(_alastor_): Take out the 'force' flag when we fix
                 # DAT-15931
@@ -323,18 +323,6 @@ class DateraApi(object):
                                         conflict_ok=True,
                                         api_version=API_VERSION,
                                         tenant=tenant)
-            # Create initiator group with initiator in it
-            initiator_path = "/initiators/{}".format(initiator)
-            initiator_group_path = "/initiator_groups/{}".format(
-                initiator_group)
-            ig_data = {'name': initiator_group,
-                       'members': [{'path': initiator_path}]}
-            self._issue_api_request("initiator_groups",
-                                    method="post",
-                                    body=ig_data,
-                                    conflict_ok=True,
-                                    api_version=API_VERSION,
-                                    tenant=tenant)
             # Create ACL with initiator group as reference for each
             # storage_instance in app_instance
             # TODO(_alastor_): We need to avoid changing the ACLs if the
@@ -355,6 +343,7 @@ class DateraApi(object):
                     nacl['path'] = acl['path']
                     eacli.append(nacl)
                 data['initiators'] = eacli
+                data['initiators'].append({"path": initiator_path})
                 # Grabbing only the 'path' key from each existing initiator
                 # group within the existing acl. eaclig --> existing
                 # acl initiator group
@@ -364,7 +353,6 @@ class DateraApi(object):
                     nacl['path'] = acl['path']
                     eaclig.append(nacl)
                 data['initiator_groups'] = eaclig
-                data['initiator_groups'].append({"path": initiator_group_path})
                 self._issue_api_request(acl_url,
                                         method="put",
                                         body=data,
@@ -448,13 +436,6 @@ class DateraApi(object):
                                     method="delete",
                                     api_version=API_VERSION,
                                     tenant=tenant)
-            # TODO(_alastor_): Re-enable this when we get a force-delete
-            # option on the /initiators endpoint
-            # if not self._check_for_acl_2_2(initiator_iqn_path):
-            #     self._issue_api_request(initiator_iqn_path.lstrip("/"),
-            #                             method="delete",
-            #                             api_version=API_VERSION,
-            #                             tenant=tenant)
         except (IndexError, exception.NotFound):
             LOG.debug("Did not find any initiator groups for volume: %s",
                       volume)

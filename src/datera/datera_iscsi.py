@@ -144,8 +144,9 @@ class DateraDriver(san.SanISCSIDriver, api2.DateraApi, api21.DateraApi,
         2.9.1 - Added extended metadata attributes during volume creation
                 and attachment.  Added datera_disable_extended_metadata option
                 to disable it.
+        2.9.2 - Made ensure_export a no-op.  Removed usage of initiator-groups
     """
-    VERSION = '2.9.1'
+    VERSION = '2.9.2'
 
     CI_WIKI_NAME = "datera-ci"
 
