@@ -615,22 +615,6 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
             "string",
             default=self.defaults.get('template', ''))
 
-        self._set_property(
-            properties,
-            "DF:default_storage_name",
-            "Datera Default Storage Instance Name",
-            _("The name to use for storage instances created"),
-            "string",
-            default=self.defaults.get('default_storage_name', "storage-1"))
-
-        self._set_property(
-            properties,
-            "DF:default_volume_name",
-            "Datera Default Volume Name",
-            _("The name to use for volumes created"),
-            "string",
-            default=self.defaults.get('default_volume_name', "volume-1"))
-
         # ###### QoS Settings ###### #
         self._set_property(
             properties,
