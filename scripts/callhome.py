@@ -17,7 +17,7 @@ import arrow
 import six
 import requests
 
-from scaffold import readCinderConf
+from scaffold import read_cinder_conf
 
 VERSION = '1.1'
 VERSION_HISTORY = """
@@ -62,7 +62,7 @@ def mk_archive(directory, output_fn):
 
 
 def post_archive(fn):
-    ip, user, password, cert, cert_key = readCinderConf()
+    ip, user, password, cert, cert_key = read_cinder_conf()
     schema = 'http'
     port = 7717
     cert_data = None
