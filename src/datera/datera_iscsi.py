@@ -145,8 +145,9 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         2.9.2 - Made ensure_export a no-op.  Removed usage of initiator-groups
         2018.4.5.0 - Switch to new date-based versioning scheme.  Removed v2
                      API support
+        2018.4.17.1 - Bugfixes to IP Pools, Templates and Initiators
     """
-    VERSION = '2018.4.5.0'
+    VERSION = '2018.4.17.1'
 
     CI_WIKI_NAME = "datera-ci"
 
