@@ -4,6 +4,7 @@ from __future__ import unicode_literals, division, print_function
 from scaffold import read_cinder_conf, getAPI
 
 import argparse
+import contextlib
 import functools
 import random
 import re
@@ -12,6 +13,7 @@ import socket
 import subprocess
 import sys
 import time
+import traceback
 import uuid
 
 from dfs_sdk.exceptions import ApiNotFoundError
@@ -20,6 +22,8 @@ VERBOSE = False
 
 O_VOLID_RE = re.compile("\| id.*\| (.*) \|")
 O_STATUS_RE = re.compile("\| status.*\| (.*) \|")
+UUID4_RE = re.compile(
+    "[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab][a-f0-9]{3}-?[a-f0-9]{12}")
 
 WORDS = ["koala", "panda", "teddy", "brown", "grizzly", "polar", "cinnamon",
          "atlas", "blue", "gobi", "sloth", "sun", "ursid", "kodiak", "gummy",
@@ -39,6 +43,7 @@ def testcase(func):
             print("SUCCESS", func.__name__)
         except Exception as e:
             print("FAILED: ", func.__name__, e)
+            print(traceback.print_exc())
 
     _TESTS.append(_wrapper)
     return _wrapper
@@ -62,8 +67,24 @@ def exe(cmd, stdout=None, shell=False):
     if not shell:
         cmd = shlex.split(cmd)
     if stdout is None:
-        return subprocess.check_output(cmd, shell=shell)
-    subprocess.check_call(cmd, stdout=stdout, shell=shell)
+        result = subprocess.check_output(cmd, shell=shell)
+        vprint(result)
+        return result
+    vprint(subprocess.check_call(cmd, stdout=stdout, shell=shell))
+
+
+def getai(api, volid, prefix="OS-"):
+    ai = api.app_instances.get(prefix+volid)
+    vprint(ai)
+    return ai
+
+
+def getvol(api, volid, prefix="OS-"):
+    ai = api.app_instances.get(prefix+volid)
+    si = ai.storage_instances.list()[0]
+    vol = si.volumes.list()[0]
+    vprint(vol)
+    return vol
 
 
 def objid_from_output(output):
@@ -82,6 +103,10 @@ def status_from_output(output):
     if not match:
         return
     return match.group(1)
+
+
+def getuuids(output):
+    return UUID4_RE.findall(output)
 
 
 def create_unmanaged_vol(api, name, cm=False):
@@ -112,11 +137,19 @@ def poll_available(obj, oid):
                          "reached".format(obj, oid))
 
 
+def create_volume(name, size, vtype=None):
+    if vtype:
+        output = exe("openstack volume create {} --size {} --type {}".format(
+            name, size, vtype))
+    else:
+        output = exe("openstack volume create {} --size {}".format(name, size))
+    return objid_from_output(output)
+
+
 @testcase
 def test_creation(api):
     name = tname("test-create")
-    result = exe("openstack volume create {} --size 5".format(name))
-    volid = objid_from_output(result)
+    volid = create_volume(name, 5)
     time.sleep(2)
     try:
         api.app_instances.get("OS-{}".format(volid))
@@ -238,16 +271,177 @@ def test_unmanage(api):
         "openstack volume create {} --size 5".format(name)))
     time.sleep(2)
     vprint(exe("cinder unmanage {}".format(name)))
-    uname = "UNMANAGED-{}".format(volid)
     time.sleep(2)
     try:
-        vprint("Checking for AppInstance:", uname)
-        ai = api.app_instances.get(uname)
+        vprint("Checking for AppInstance:", "UNMANAGED-"+volid)
+        ai = getai(api, volid, prefix="UNMANAGED-")
         ai.delete()
     except ApiNotFoundError as e:
-        print("Unmanaged volume {} not found".format(uname))
+        print("Unmanaged volume {} not found".format("UNMANAGED-"+volid))
         print(e)
         return
+
+
+################
+# Volume Types #
+################
+
+@contextlib.contextmanager
+def create_volume_type(name, properties):
+    exe("openstack volume type create {}".format(name))
+    cmd = "openstack volume type set {}".format(name)
+    for k, v in properties.items():
+        cmd += " --property {}={}".format(k, v)
+    exe(cmd)
+    try:
+        yield
+    finally:
+        try:
+            time.sleep(1)
+            data = exe("openstack volume list --long --format value")
+            data = "\n".join(filter(lambda x: name in x, data.splitlines()))
+            uids = getuuids(data)
+            cmd = " ".join(["openstack volume delete"] + uids)
+            exe(cmd)
+            time.sleep(2)
+        except subprocess.CalledProcessError:
+            pass
+        exe("openstack volume type delete {}".format(name))
+
+
+@contextlib.contextmanager
+def create_ip_pool(api, name):
+    data = {"name": name,
+            "network_paths": [{"name": "access_2",
+                               "netmask": 24,
+                               "vlan": 0,
+                               "start_ip": "172.29.41.121",
+                               "range": 6,
+                               "mtu": 1500},
+                              {"name": "access_1",
+                               "netmask": 24,
+                               "vlan": 0,
+                               "start_ip": "172.28.41.121",
+                               "range": 6,
+                               "mtu": 1500, }]}
+    try:
+        yield api.access_network_ip_pools.create(**data)
+    finally:
+        ippool = api.access_network_ip_pools.get(name)
+        ippool.delete()
+
+
+@contextlib.contextmanager
+def create_template(api, name):
+    data = {
+        "name": name,
+        "storage_templates": [
+            {
+                "name": "storage-1",
+                "volume_templates": [
+                    {
+                        "name": "volume-1",
+                        "replica_count": 1,
+                        "size": 5,
+                        "snapshot_policies": [
+                            {
+                                "name": "weekly",
+                                "retention_count": 12,
+                                "start_time": "1970-01-01T00:00:30+00:00",
+                                "interval": "1week"
+                            }
+                        ],
+                        "placement_mode": "hybrid"
+                    }
+                ],
+                "ip_pool": "/access_network_ip_pools/default"
+            }
+        ],
+    }
+    try:
+        yield api.app_templates.create(**data)
+    finally:
+        at = api.app_templates.get(name)
+        at.delete()
+
+
+@testcase
+def test_volume_type_placement_mode(api):
+    for pm in ["hybrid", "single_flash", "all_flash"]:
+        vtname = tname("pm-{}".format(pm))
+        with create_volume_type(vtname, {"DF:placement_mode": pm,
+                                         "DF:replica_count": 1}):
+            vname = tname("test-placement-mode")
+            volid = create_volume(vname, 5, vtype=vtname)
+            poll_available("volume", volid)
+            vol = getvol(api, volid)
+            assert vol["placement_mode"] == pm
+
+
+@testcase
+def test_volume_type_ip_pool(api):
+    ipname = tname("vtype-ip-pool")
+    vtname = tname("ip-pool")
+    with create_ip_pool(api, ipname) as ip:
+        with create_volume_type(vtname, {"DF:ip_pool": ipname,
+                                         "DF:replica_count": 1}):
+            vname = tname("test-ip-pool")
+            volid = create_volume(vname, 5, vtype=vtname)
+            poll_available("volume", volid)
+            ai = getai(api, volid)
+            assert ai["storage_instances"][0]["ip_pool"]["path"] == ip["path"]
+
+
+@testcase
+def test_volume_type_template(api):
+
+    template = rname()
+    vtname = tname("test-template")
+    with create_template(api, template) as at:
+        with create_volume_type(vtname, {"DF:template": template,
+                                         "DF:replica_count": 1}):
+            vname = tname("test-template")
+            volid = create_volume(vname, 5, vtype=vtname)
+            poll_available("volume", volid)
+            ai = getai(api, volid)
+            assert ai["app_template"]["path"] == at["path"]
+
+
+#######
+# QoS #
+#######
+
+
+def test_qos_read_bandwidth_max(api):
+    pass
+
+
+def test_qos_write_bandwidth_max(api):
+    pass
+
+
+def test_qos_total_bandwidth_max(api):
+    pass
+
+
+def test_qos_read_iops_max(api):
+    pass
+
+
+def test_qos_write_iops_max(api):
+    pass
+
+
+def test_qos_total_iops_max(api):
+    pass
+
+
+def test_qos_bandwidth_per_gb(api):
+    pass
+
+
+def test_qos_iops_per_gb(api):
+    pass
 
 
 def main(args):
