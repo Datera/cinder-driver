@@ -58,27 +58,31 @@ class DateraApi(object):
         volume_name = 'volume-1'
         template = policies['template']
         placement = policies['placement_mode']
+        ip_pool = policies['ip_pool']
 
         if template:
             app_params = (
                 {
-                    'create_mode': "openstack",
+                    'create_mode': 'openstack',
                     # 'uuid': str(volume['id']),
                     'name': datc._get_name(volume['id']),
-                    'app_template': '/app_templates/{}'.format(template)
+                    'app_template': {'path': '/app_templates/{}'.format(
+                        template)}
                 })
 
         else:
 
             app_params = (
                 {
-                    'create_mode': "openstack",
+                    'create_mode': 'openstack',
                     'uuid': str(volume['id']),
                     'name': datc._get_name(volume['id']),
                     'access_control_mode': 'deny_all',
                     'storage_instances': [
                         {
                             'name': storage_name,
+                            'ip_pool': {'path': ('/access_network_ip_pools/'
+                                                 '{}'.format(ip_pool))},
                             'volumes': [
                                 {
                                     'name': volume_name,
@@ -301,9 +305,7 @@ class DateraApi(object):
             url, api_version=API_VERSION, tenant=tenant)
         # Handle adding initiator to product if necessary
         # Then add initiator to ACL
-        if (connector and
-                connector.get('initiator') and
-                not policies['acl_allow_all']):
+        if connector and connector.get('initiator'):
             initiator_name = "OpenStack_{}_{}".format(
                 self.driver_prefix, str(uuid.uuid4())[:4])
             # TODO(_alastor_): actually check for existing initiator
@@ -583,11 +585,6 @@ class DateraApi(object):
                     "Fast retyping between template-backed volume-types "
                     "unsupported.  Type1: %s, Type2: %s",
                     volume['volume_type_id'], new_type)
-
-            if old_pol.get('acl_allow_all') != new_pol.get('acl_allow_all'):
-                LOG.warning(
-                    "Changing acl_allow_all unsupported for fast retyping"
-                    "Type1: %s, Type2: %s", volume['volume_type_id'], new_type)
 
             tenant = self._create_tenant_2_2(volume)
             self._update_qos_2_2(volume, new_pol, tenant, clear_old=True)

@@ -592,15 +592,6 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
 
         self._set_property(
             properties,
-            "DF:acl_allow_all",
-            "Datera ACL Allow All",
-            _("True to set acl 'allow_all' on volumes created.  Cannot be "
-              "changed on volume once set"),
-            "boolean",
-            default="True" == self.defaults.get('acl_allow_all', "False"))
-
-        self._set_property(
-            properties,
             "DF:ip_pool",
             "Datera IP Pool",
             _("Specifies IP pool to use for volume"),
