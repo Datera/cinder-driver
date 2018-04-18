@@ -58,6 +58,14 @@ Datera Volume Driver Version History
      - Bugfix for missing tenancy calls in offline_flip
    * - 2.9.0
      - Volumes now correctly renamed during backend migration. Implemented update_migrated_volume (API 2.1+ only)
+   * - 2.9.1
+     - Added extended metadata attributes during volume creation and attachment.  Added datera_disable_extended_metadata option to disable it.
+   * - 2.9.2
+     - Made ensure_export a no-op.  Removed usage of initiator-groups
+   * - 2018.4.5.0
+     - Switch to new date-based versioning scheme.  Removed v2 API support
+   * - 2018.4.17.1
+     - Bugfixes to IP Pools, Templates and Initiators
 
 ---------------------------------
 Volume Driver Cinder.conf Options
@@ -121,8 +129,6 @@ Volume-Type ExtraSpecs
    * - ``DF:round_robin`` = ``False``
      - (Bool) True to round robin the provided portals for a target
    * - ``DF:placement_mode`` = ``hybrid``
-     - (String) 'single_flash' for single-flash-replica placement.  'all_flash' for all-flash-replica placement. 'hybrid' for hybrid placement.
-   * - ``DF:acl_allow_all`` = ``False``
      - (Bool) True to set acl 'allow_all' on volume created.  Cannot be changed on volume once set
    * - ``DF:ip_pool`` = ``default``
      - (String) Specifies IP pool to use for volume
