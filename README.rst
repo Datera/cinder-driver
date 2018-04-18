@@ -12,60 +12,60 @@ Datera Volume Driver Version History
 
    * - Version
      - Changes
-   * - 1.0
-     - Initial driver
-   * - 1.1
-     - Look for lun-0 instead of lun-1.
-   * - 2.0
-     - Update For Datera API v2
-   * - 2.1
-     - Multipath, ACL and reorg
-   * - 2.2
-     - Capabilites List, Extended Volume-Type Support Naming convention change, Volume Manage/Unmanage support
-   * - 2.3
-     - Templates, Tenants, Snapshot Polling, 2.1 Api Version Support, Restructure
-   * - 2.3.1
-     - Scalability bugfixes
-   * - 2.3.2
-     - Volume Placement, ACL multi-attach bugfix
-   * - 2.4.0
-     - Fast Retype Support
-   * - 2.5.0
-     - Glance Image Caching, retyping/QoS bugfixes
-   * - 2.6.0
-     - Api 2.2 support
-   * - 2.6.1
-     - Glance interoperability fix
-   * - 2.7.0
-     - IOPS/GB and BW/GB settings, driver level overrides
-   * - 2.7.2
-     - Allowing DF: QoS Spec prefix, QoS type leak bugfix
-   * - 2.8.0
-     - LDAP Support
-   * - 2.8.1
-     - Bugfix for missing default dict during retype
-   * - 2.8.2
-     - Updated most retype operations to not detach volume
-   * - 2.8.3
-     - Bugfix for not allowing fast clones for shared/community volumes
-   * - 2.8.4
-     - Fixed missing API version pinning in _offline_flip
-   * - 2.8.5
-     - Membership check for fast image cloning. Metadata API pinning
-   * - 2.8.6
-     - Added LDAP support and CHAP support
-   * - 2.8.7
-     - Bugfix for missing tenancy calls in offline_flip
-   * - 2.9.0
-     - Volumes now correctly renamed during backend migration. Implemented update_migrated_volume (API 2.1+ only)
-   * - 2.9.1
-     - Added extended metadata attributes during volume creation and attachment.  Added datera_disable_extended_metadata option to disable it.
-   * - 2.9.2
-     - Made ensure_export a no-op.  Removed usage of initiator-groups
-   * - 2018.4.5.0
-     - Switch to new date-based versioning scheme.  Removed v2 API support
    * - 2018.4.17.1
      - Bugfixes to IP Pools, Templates and Initiators
+   * - 2018.4.5.0
+     - Switch to new date-based versioning scheme.  Removed v2 API support
+   * - 2.9.2
+     - Made ensure_export a no-op.  Removed usage of initiator-groups
+   * - 2.9.1
+     - Added extended metadata attributes during volume creation and attachment.  Added datera_disable_extended_metadata option to disable it.
+   * - 2.9.0
+     - Volumes now correctly renamed during backend migration. Implemented update_migrated_volume (API 2.1+ only)
+   * - 2.8.7
+     - Bugfix for missing tenancy calls in offline_flip
+   * - 2.8.6
+     - Added LDAP support and CHAP support
+   * - 2.8.5
+     - Membership check for fast image cloning. Metadata API pinning
+   * - 2.8.4
+     - Fixed missing API version pinning in _offline_flip
+   * - 2.8.3
+     - Bugfix for not allowing fast clones for shared/community volumes
+   * - 2.8.2
+     - Updated most retype operations to not detach volume
+   * - 2.8.1
+     - Bugfix for missing default dict during retype
+   * - 2.8.0
+     - LDAP Support
+   * - 2.7.2
+     - Allowing DF: QoS Spec prefix, QoS type leak bugfix
+   * - 2.7.0
+     - IOPS/GB and BW/GB settings, driver level overrides
+   * - 2.6.1
+     - Glance interoperability fix
+   * - 2.6.0
+     - Api 2.2 support
+   * - 2.5.0
+     - Glance Image Caching, retyping/QoS bugfixes
+   * - 2.4.0
+     - Fast Retype Support
+   * - 2.3.2
+     - Volume Placement, ACL multi-attach bugfix
+   * - 2.3.1
+     - Scalability bugfixes
+   * - 2.3
+     - Templates, Tenants, Snapshot Polling, 2.1 Api Version Support, Restructure
+   * - 2.2
+     - Capabilites List, Extended Volume-Type Support Naming convention change, Volume Manage/Unmanage support
+   * - 2.1
+     - Multipath, ACL and reorg
+   * - 2.0
+     - Update For Datera API v2
+   * - 1.1
+     - Look for lun-0 instead of lun-1.
+   * - 1.0
+     - Initial driver
 
 ---------------------------------
 Volume Driver Cinder.conf Options
