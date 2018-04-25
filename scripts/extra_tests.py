@@ -32,17 +32,32 @@ WORDS = ["koala", "panda", "teddy", "brown", "grizzly", "polar", "cinnamon",
          "spectacled", "kermode", "spirit", "glacier"]
 
 _TESTS = []
+_PASS = []
+_FAIL = []
+_XFAIL = []
+_SKIP = []
+
+
+class XFailError(ValueError):
+    pass
 
 
 def testcase(func):
     @functools.wraps(func)
     def _wrapper(*args, **kwargs):
+        name = func.__name__
         try:
-            print("Running:", func.__name__)
+            print("Running:", name)
             func(*args, **kwargs)
-            print("SUCCESS", func.__name__)
+            _PASS.append(name)
+            print("SUCCESS", name)
+        except XFailError as e:
+            print("XFAILED: ", name, e)
+            _XFAIL.append(name)
+            print(traceback.print_exc())
         except Exception as e:
-            print("FAILED: ", func.__name__, e)
+            _FAIL.append(name)
+            print("FAILED: ", name, e)
             print(traceback.print_exc())
 
     _TESTS.append(_wrapper)
@@ -60,6 +75,14 @@ def tname(s):
 
 def rname():
     return "-".join((random.choice(WORDS), random.choice(WORDS), "bear"))
+
+
+def vassert(val1, val2):
+    try:
+        assert val1 == val2
+    except AssertionError:
+        print("Assertion failed: [{}] != [{}]".format(val1, val2))
+        raise
 
 
 def exe(cmd, stdout=None, shell=False):
@@ -85,6 +108,11 @@ def getvol(api, volid, prefix="OS-"):
     vol = si.volumes.list()[0]
     vprint(vol)
     return vol
+
+
+def getqos(api, volid, prefix="OS-"):
+    vol = getvol(api, volid, prefix=prefix)
+    return vol["performance_policy"]
 
 
 def objid_from_output(output):
@@ -190,7 +218,7 @@ def test_manage_style_2(api):
 
 
 @testcase
-def test_manange_then_clone(api):
+def test_manage_then_clone(api):
     name = tname("test-manage-then-clone")
     si_name, vol_name = create_unmanaged_vol(api, name)
     hostname = socket.gethostname()
@@ -211,11 +239,11 @@ def test_manange_then_clone(api):
     exe("openstack volume delete {}".format(cloneid))
     exe("openstack volume delete {}".format(volid))
     if failed:
-        raise ValueError("Failed clone command, likely create_mode")
+        raise XFailError("Failed clone command, likely create_mode")
 
 
 @testcase
-def test_manange_then_clone_cm(api):
+def test_manage_then_clone_cm(api):
     """ Setting create_mode so clone can actually go through"""
     name = tname("test-manage-then-clone")
     si_name, vol_name = create_unmanaged_vol(api, name, cm=True)
@@ -375,7 +403,7 @@ def test_volume_type_placement_mode(api):
             volid = create_volume(vname, 5, vtype=vtname)
             poll_available("volume", volid)
             vol = getvol(api, volid)
-            assert vol["placement_mode"] == pm
+            vassert(vol["placement_mode"], pm)
 
 
 @testcase
@@ -389,12 +417,11 @@ def test_volume_type_ip_pool(api):
             volid = create_volume(vname, 5, vtype=vtname)
             poll_available("volume", volid)
             ai = getai(api, volid)
-            assert ai["storage_instances"][0]["ip_pool"]["path"] == ip["path"]
+            vassert(ai["storage_instances"][0]["ip_pool"]["path"], ip["path"])
 
 
 @testcase
 def test_volume_type_template(api):
-
     template = rname()
     vtname = tname("test-template")
     with create_template(api, template) as at:
@@ -404,7 +431,7 @@ def test_volume_type_template(api):
             volid = create_volume(vname, 5, vtype=vtname)
             poll_available("volume", volid)
             ai = getai(api, volid)
-            assert ai["app_template"]["path"] == at["path"]
+            vassert(ai["app_template"]["path"], at["path"])
 
 
 #######
@@ -412,36 +439,114 @@ def test_volume_type_template(api):
 #######
 
 
+@testcase
 def test_qos_read_bandwidth_max(api):
-    pass
+    qos_value = random.randint(200, 500)
+    vtname = tname("test-qos-read-bw-max")
+    with create_volume_type(vtname, {"DF:read_bandwidth_max": qos_value,
+                                     "DF:replica_count": 1}):
+        vname = tname("test-qos-read-bw-max")
+        volid = create_volume(vname, 5, vtype=vtname)
+        poll_available("volume", volid)
+        qos = getqos(api, volid)
+        vassert(qos["read_bandwidth_max"], qos_value)
 
 
+@testcase
 def test_qos_write_bandwidth_max(api):
-    pass
+    qos_value = random.randint(200, 500)
+    vtname = tname("test-qos-write-bw-max")
+    with create_volume_type(vtname, {"DF:write_bandwidth_max": qos_value,
+                                     "DF:replica_count": 1}):
+        vname = tname("test-qos-write-bw-max")
+        volid = create_volume(vname, 5, vtype=vtname)
+        poll_available("volume", volid)
+        qos = getqos(api, volid)
+        vassert(qos["write_bandwidth_max"], qos_value)
 
 
+@testcase
 def test_qos_total_bandwidth_max(api):
-    pass
+    qos_value = random.randint(200, 500)
+    vtname = tname("test-qos-total-bw-max")
+    with create_volume_type(vtname, {"DF:total_bandwidth_max": qos_value,
+                                     "DF:replica_count": 1}):
+        vname = tname("test-qos-total-bw-max")
+        volid = create_volume(vname, 5, vtype=vtname)
+        poll_available("volume", volid)
+        qos = getqos(api, volid)
+        vassert(qos["total_bandwidth_max"], qos_value)
 
 
+@testcase
 def test_qos_read_iops_max(api):
-    pass
+    qos_value = random.randint(200, 500)
+    vtname = tname("test-qos-read-iops-max")
+    with create_volume_type(vtname, {"DF:read_iops_max": qos_value,
+                                     "DF:replica_count": 1}):
+        vname = tname("test-qos-read-iops-max")
+        volid = create_volume(vname, 5, vtype=vtname)
+        poll_available("volume", volid)
+        qos = getqos(api, volid)
+        vassert(qos["read_iops_max"], qos_value)
 
 
+@testcase
 def test_qos_write_iops_max(api):
-    pass
+    qos_value = random.randint(200, 500)
+    vtname = tname("test-qos-write-iops-max")
+    with create_volume_type(vtname, {"DF:write_iops_max": qos_value,
+                                     "DF:replica_count": 1}):
+        vname = tname("test-qos-write-iops-max")
+        volid = create_volume(vname, 5, vtype=vtname)
+        poll_available("volume", volid)
+        qos = getqos(api, volid)
+        vassert(qos["write_iops_max"], qos_value)
 
 
+@testcase
 def test_qos_total_iops_max(api):
-    pass
+    qos_value = random.randint(200, 500)
+    vtname = tname("test-qos-total-iops-max")
+    with create_volume_type(vtname, {"DF:total_iops_max": qos_value,
+                                     "DF:replica_count": 1}):
+        vname = tname("test-qos-total-iops-max")
+        volid = create_volume(vname, 5, vtype=vtname)
+        poll_available("volume", volid)
+        qos = getqos(api, volid)
+        vassert(qos["total_iops_max"], qos_value)
 
 
+@testcase
 def test_qos_bandwidth_per_gb(api):
-    pass
+    qos_value = random.randint(25, 150)
+    size = random.randint(2, 10)
+    bigval = 150 * 10 * 2
+    vtname = tname("test-bandwidth-per-gb")
+    with create_volume_type(vtname, {"DF:bandwidth_per_gb": qos_value,
+                                     "DF:total_bandwidth_max": bigval,
+                                     "DF:replica_count": 1}):
+        vname = tname("test-bandwidth-per-gb")
+        volid = create_volume(vname, size, vtype=vtname)
+        poll_available("volume", volid)
+        qos = getqos(api, volid)
+        vassert(qos["total_bandwidth_max"], qos_value * size)
 
 
+@testcase
 def test_qos_iops_per_gb(api):
-    pass
+    qos_value = random.randint(25, 150)
+    size = random.randint(2, 10)
+    bigval = 150 * 10 * 2
+    vtname = tname("test-qos-iops-per-gb")
+    with create_volume_type(vtname, {"DF:iops_per_gb": qos_value,
+                                     "DF:total_iops_max": bigval,
+                                     "DF:replica_count": 1}):
+        vname = tname("test-iops-per-gb")
+        volid = create_volume(vname, size, vtype=vtname)
+        poll_available("volume", volid)
+        qos = getqos(api, volid)
+        vassert(qos["total_iops_max"], qos_value * size)
 
 
 def main(args):
@@ -455,6 +560,15 @@ def main(args):
                        args.filter == x.__name__, tests)
     for test in tests:
         test(api)
+
+    print()
+    print("----------")
+    print("| REPORT |")
+    print("----------")
+    print("PASSED:", len(_PASS))
+    print("FAILED:", len(_FAIL))
+    print("XFAILED:", len(_XFAIL))
+    print("SKIPPED:", len(_SKIP))
 
 
 if __name__ == "__main__":
