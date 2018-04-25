@@ -1205,7 +1205,7 @@ class DateraApi(object):
             if bandwidth_per_gb:
                 bpg = bandwidth_per_gb * volume['size']
                 # Not using zero, because zero means unlimited
-                bm = fpolicies.get('total_iops_max', 1)
+                bm = fpolicies.get('total_bandwidth_max', 1)
                 r = bpg
                 if bpg > bm:
                     r = bm
