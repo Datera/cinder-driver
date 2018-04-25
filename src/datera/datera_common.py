@@ -48,6 +48,7 @@ UNMANAGE_PREFIX = "UNMANAGED-"
 UUID4_STR_RE = ("%s[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab]"
                 "[a-f0-9]{3}-?[a-f0-9]{12}")
 UUID4_RE = re.compile(UUID4_STR_RE % OS_PREFIX)
+SNAP_RE = re.compile(r"\d{10,}\.\d+")
 
 # Recursive dict to assemble basic url structure for the most common
 # API URL endpoints. Most others are constructed from these
@@ -199,6 +200,46 @@ def _api_lookup(func):
                     raise
 
     return wrapper
+
+
+def _parse_vol_ref(ref):
+    if ref.count(":") not in (2, 3):
+        raise exception.ManageExistingInvalidReference(
+            _("existing_ref argument must be of this format: "
+              "tenant:app_inst_name:storage_inst_name:vol_name or "
+              "app_inst_name:storage_inst_name:vol_name"))
+    try:
+        (tenant, app_inst_name, storage_inst_name,
+            vol_name) = ref.split(":")
+        if tenant == "root":
+            tenant = None
+    except (TypeError, ValueError):
+        app_inst_name, storage_inst_name, vol_name = ref.split(
+            ":")
+        tenant = None
+    return app_inst_name, storage_inst_name, vol_name, tenant
+
+
+def _check_snap_ref(ref):
+    if not SNAP_RE.match(ref):
+        raise exception.ManageExistingInvalidReference(
+            _("existing_ref argument must be of this format: "
+              "1234567890.12345678"))
+    return True
+
+
+def _get_size(app_inst):
+    """Helper method for getting the size of a backend object
+
+    If app_inst is provided, we'll just parse the dict to get
+    the size instead of making a separate http request
+    """
+    if 'data' in app_inst:
+        app_inst = app_inst['data']
+    sis = app_inst['storage_instances']
+    found_si = sis[0]
+    found_vol = found_si['volumes'][0]
+    return found_vol['size']
 
 
 def _get_supported_api_versions(driver):

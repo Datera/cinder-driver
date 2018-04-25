@@ -146,8 +146,9 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         2018.4.5.0 - Switch to new date-based versioning scheme.  Removed v2
                      API support
         2018.4.17.1 - Bugfixes to IP Pools, Templates and Initiators
+        2018.4.25.0 - Snapshot Manage.  List Manageable Snapshots support
     """
-    VERSION = '2018.4.17.1'
+    VERSION = '2018.4.25.0'
 
     CI_WIKI_NAME = "datera-ci"
 
@@ -352,6 +353,36 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         """
         pass
 
+    @datc._api_lookup
+    def manage_existing_snapshot(self, snapshot, existing_ref):
+        """Brings an existing backend storage object under Cinder management.
+
+        existing_ref is passed straight through from the API request's
+        manage_existing_ref value, and it is up to the driver how this should
+        be interpreted.  It should be sufficient to identify a storage object
+        that the driver should somehow associate with the newly-created cinder
+        snapshot structure.
+
+        There are two ways to do this:
+
+        1. Rename the backend storage object so that it matches the
+           snapshot['name'] which is how drivers traditionally map between a
+           cinder snapshot and the associated backend storage object.
+
+        2. Place some metadata on the snapshot, or somewhere in the backend,
+           that allows other driver requests (e.g. delete) to locate the
+           backend storage object when required.
+
+        If the existing_ref doesn't make sense, or doesn't refer to an existing
+        backend storage object, raise a ManageExistingInvalidReference
+        exception.
+
+        :param snapshot:     Cinder volume snapshot to manage
+        :param existing_ref: Driver-specific information used to identify a
+                             volume snapshot
+        """
+        pass
+
     # ===================
     # = Manage Get Size =
     # ===================
@@ -373,6 +404,19 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         :param volume:       Cinder volume to manage
         :param existing_ref: Driver-specific information used to identify a
                              volume on the Datera backend
+        """
+        pass
+
+    @datc._api_lookup
+    def manage_existing_snapshot_get_size(self, snapshot, existing_ref):
+        """Return size of snapshot to be managed by manage_existing.
+
+        When calculating the size, round up to the next GB.
+
+        :param snapshot:     Cinder volume snapshot to manage
+        :param existing_ref: Driver-specific information used to identify a
+                             volume snapshot
+        :returns size:       Volume snapshot size in GiB (integer)
         """
         pass
 
@@ -409,6 +453,45 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
                           'identifier' and 'size')
         :param sort_dirs: List of directions to sort by, corresponding to
                           sort_keys (valid directions are 'asc' and 'desc')
+        """
+        pass
+
+    # ============================
+    # = Get Manageable Snapshots =
+    # ============================
+
+    @datc._api_lookup
+    def get_manageable_snapshots(self, cinder_snapshots, marker, limit,
+                                 offset, sort_keys, sort_dirs):
+        """List snapshots on the backend available for management by Cinder.
+
+        Returns a list of dictionaries, each specifying a snapshot in the host,
+        with the following keys:
+        - reference (dictionary): The reference for a snapshot, which can be
+        passed to "manage_existing_snapshot".
+        - size (int): The size of the snapshot according to the storage
+        backend, rounded up to the nearest GB.
+        - safe_to_manage (boolean): Whether or not this snapshot is safe to
+        manage according to the storage backend. For example, is the snapshot
+        in use or invalid for any reason.
+        - reason_not_safe (string): If safe_to_manage is False, the reason why.
+        - cinder_id (string): If already managed, provide the Cinder ID.
+        - extra_info (string): Any extra information to return to the user
+        - source_reference (string): Similar to "reference", but for the
+        snapshot's source volume.
+
+        :param cinder_snapshots: A list of snapshots in this host that Cinder
+                                 currently manages, used to determine if
+                                 a snapshot is manageable or not.
+        :param marker:    The last item of the previous page; we return the
+                          next results after this value (after sorting)
+        :param limit:     Maximum number of items to return
+        :param offset:    Number of items to skip after marker
+        :param sort_keys: List of keys to sort results by (valid keys are
+                          'identifier' and 'size')
+        :param sort_dirs: List of directions to sort by, corresponding to
+                          sort_keys (valid directions are 'asc' and 'desc')
+
         """
         pass
 

@@ -16,7 +16,6 @@
 import contextlib
 import math
 import random
-import re
 import time
 import uuid
 
@@ -25,6 +24,7 @@ import ipaddress
 import six
 
 from oslo_log import log as logging
+from oslo_serialization import jsonutils as json
 from oslo_utils import excutils
 from oslo_utils import units
 
@@ -103,7 +103,7 @@ class DateraApi(object):
             api_version=API_VERSION,
             tenant=tenant)
         self._update_qos_2_2(volume, policies, tenant)
-        self._add_vol_meta(volume)
+        self._add_vol_meta_2_2(volume)
 
     # =================
     # = Extend Volume =
@@ -163,7 +163,7 @@ class DateraApi(object):
 
         if volume['size'] > src_vref['size']:
             self._extend_volume_2_2(volume, volume['size'])
-        self._add_vol_meta(volume)
+        self._add_vol_meta_2_2(volume)
 
     # =================
     # = Delete Volume =
@@ -371,7 +371,7 @@ class DateraApi(object):
                     tenant=tenant, body=data, sensitive=True)
         # Check to ensure we're ready for go-time
         self._si_poll_2_2(volume, store_name, tenant)
-        self._add_vol_meta(volume, connector=connector)
+        self._add_vol_meta_2_2(volume, connector=connector)
 
     # =================
     # = Detach Volume =
@@ -389,12 +389,12 @@ class DateraApi(object):
             self._issue_api_request(
                 url, method='put', body=data, api_version=API_VERSION,
                 tenant=tenant)
+            # TODO(_alastor_): Make acl cleaning multi-attach aware
+            self._clean_acl_2_2(volume, tenant)
         except exception.NotFound:
             msg = ("Tried to detach volume %s, but it was not found in the "
                    "Datera cluster. Continuing with detach.")
             LOG.info(msg, volume['id'])
-        # TODO(_alastor_): Make acl cleaning multi-attach aware
-        self._clean_acl_2_2(volume, tenant)
 
     def _check_for_acl_2_2(self, initiator_path, tenant):
         """Returns True if an acl is found for initiator_path """
@@ -467,15 +467,26 @@ class DateraApi(object):
     # ===================
 
     def _delete_snapshot_2_2(self, snapshot):
+        # Handle case where snapshot is "managed"
         tenant = self._create_tenant_2_2(snapshot)
-
         dummy_vol = {'id': snapshot['volume_id']}
         store_name, vol_name = self._scrape_ai_2_2(dummy_vol)
+        vol_id = datc._get_name(snapshot['volume_id'])
 
         snap_temp = datc.URL_TEMPLATES['vol_inst'](
             store_name, vol_name) + '/snapshots'
-        snapu = snap_temp.format(datc._get_name(snapshot['volume_id']))
+        snapu = snap_temp.format(vol_id)
         snapshots = []
+
+        # Shortcut if this is a managed snapshot
+        if snapshot.get('provider_location'):
+            url_template = snapu + '/{}'
+            url = url_template.format(snapshot.get('provider_location'))
+            self._issue_api_request(url, method='delete',
+                                    api_version=API_VERSION, tenant=tenant)
+            return
+
+        # Long-way.  UUID identification
         try:
             snapshots = self._issue_api_request(snapu,
                                                 method='get',
@@ -512,22 +523,28 @@ class DateraApi(object):
     # ========================
 
     def _create_volume_from_snapshot_2_2(self, volume, snapshot):
-        tenant = self._create_tenant_2_2(volume)
+        # Handle case where snapshot is "managed"
         dummy_vol = {'id': snapshot['volume_id']}
+        tenant = self._create_tenant_2_2(volume)
         store_name, vol_name = self._scrape_ai_2_2(dummy_vol)
+        vol_id = datc._get_name(snapshot['volume_id'])
 
         snap_temp = datc.URL_TEMPLATES['vol_inst'](
             store_name, vol_name) + '/snapshots'
-        snapu = snap_temp.format(datc._get_name(snapshot['volume_id']))
-        snapshots = self._issue_api_request(
-            snapu, method='get', api_version=API_VERSION, tenant=tenant)
-
-        for snap in snapshots['data']:
-            if snap['uuid'] == snapshot['id']:
-                found_ts = snap['utc_ts']
-                break
+        snapu = snap_temp.format(vol_id)
+        found_ts = None
+        if snapshot.get('provider_location'):
+            found_ts = snapshot['provider_location']
         else:
-            raise exception.NotFound
+            snapshots = self._issue_api_request(
+                snapu, method='get', api_version=API_VERSION, tenant=tenant)
+
+            for snap in snapshots['data']:
+                if snap['uuid'] == snapshot['id']:
+                    found_ts = snap['utc_ts']
+                    break
+            else:
+                raise exception.NotFound
 
         snap_url = (snap_temp + '/{}').format(
             datc._get_name(snapshot['volume_id']), found_ts)
@@ -551,7 +568,7 @@ class DateraApi(object):
 
         if (volume['size'] > snapshot['volume_size']):
             self._extend_volume_2_2(volume, volume['size'])
-        self._add_vol_meta(volume)
+        self._add_vol_meta_2_2(volume)
 
     # ==========
     # = Retype =
@@ -604,7 +621,7 @@ class DateraApi(object):
                         'placement_mode': new_pol['placement_mode'],
                     })
                 _put(vol_params, tenant, store_name, vol_name)
-            self._add_vol_meta(volume)
+            self._add_vol_meta_2_2(volume)
             return True
 
         else:
@@ -622,20 +639,7 @@ class DateraApi(object):
         # This will be fixed in a later API update
         tenant = self._create_tenant_2_2(volume)
         existing_ref = existing_ref['source-name']
-        if existing_ref.count(":") not in (2, 3):
-            raise exception.ManageExistingInvalidReference(
-                _("existing_ref argument must be of this format: "
-                  "tenant:app_inst_name:storage_inst_name:vol_name or "
-                  "app_inst_name:storage_inst_name:vol_name"))
-        try:
-            (tenant, app_inst_name, storage_inst_name,
-                vol_name) = existing_ref.split(":")
-            if tenant == "root":
-                tenant = None
-        except (TypeError, ValueError):
-            app_inst_name, storage_inst_name, vol_name = existing_ref.split(
-                ":")
-            tenant = None
+        app_inst_name, _, _, _ = datc._parse_vol_ref(existing_ref)
         LOG.debug("Managing existing Datera volume %s  "
                   "Changing name to %s",
                   datc._get_name(volume['id']), existing_ref)
@@ -644,7 +648,7 @@ class DateraApi(object):
         self._issue_api_request(datc.URL_TEMPLATES['ai_inst']().format(
             app_inst_name), method='put', body=data,
             api_version=API_VERSION, tenant=tenant)
-        self._add_vol_meta(volume)
+        self._add_vol_meta_2_2(volume)
 
     # ===================
     # = Manage Get Size =
@@ -653,73 +657,34 @@ class DateraApi(object):
     def _manage_existing_get_size_2_2(self, volume, existing_ref):
         tenant = self._create_tenant_2_2(volume)
         existing_ref = existing_ref['source-name']
-        if existing_ref.count(":") not in (2, 3):
-            raise exception.ManageExistingInvalidReference(
-                _("existing_ref argument must be of this format:"
-                  "app_inst_name:storage_inst_name:vol_name"))
-        try:
-            (tenant, app_inst_name, storage_inst_name,
-                vol_name) = existing_ref.split(":")
-            if tenant == "root":
-                tenant = None
-        except (TypeError, ValueError):
-            app_inst_name, storage_inst_name, vol_name = existing_ref.split(
-                ":")
-            tenant = None
+        app_inst_name, storage_inst_name, vol_name, _ = datc._parse_vol_ref(
+            existing_ref)
         app_inst = self._issue_api_request(
             datc.URL_TEMPLATES['ai_inst']().format(app_inst_name),
             api_version=API_VERSION, tenant=tenant)
-        return self._get_size_2_2(
-            volume, tenant, app_inst, storage_inst_name, vol_name)
-
-    def _get_size_2_2(self, volume, tenant=None, app_inst=None, si_name=None,
-                      vol_name=None):
-        """Helper method for getting the size of a backend object
-
-        If app_inst is provided, we'll just parse the dict to get
-        the size instead of making a separate http request
-        """
-        si_name = si_name if si_name else 'storage-1'
-        vol_name = vol_name if vol_name else 'volume-1'
-        if not app_inst:
-            vol_url = datc.URL_TEMPLATES['ai_inst']().format(
-                datc._get_name(volume['id']))
-            app_inst = self._issue_api_request(
-                vol_url, api_version=API_VERSION, tenant=tenant)['data']
-        if 'data' in app_inst:
-            app_inst = app_inst['data']
-        sis = app_inst['storage_instances']
-        found_si = None
-        for si in sis:
-            if si['name'] == si_name:
-                found_si = si
-                break
-        found_vol = None
-        for vol in found_si['volumes']:
-            if vol['name'] == vol_name:
-                found_vol = vol
-        size = found_vol['size']
-        return size
+        return datc._get_size(app_inst=app_inst)
 
     # =========================
     # = Get Manageable Volume =
     # =========================
 
-    def _get_manageable_volumes_2_2(self, cinder_volumes, marker, limit,
-                                    offset, sort_keys, sort_dirs):
+    def _list_manageable_2_2(self, cinder_volumes):
         # Use the first volume to determine the tenant we're working under
         if cinder_volumes:
             tenant = self._create_tenant_2_2(cinder_volumes[0])
         else:
             tenant = None
-        LOG.debug("Listing manageable Datera volumes")
+
         app_instances = self._issue_api_request(
             datc.URL_TEMPLATES['ai'](), api_version=API_VERSION,
             tenant=tenant)['data']
 
         results = []
 
-        cinder_volume_ids = [vol['id'] for vol in cinder_volumes]
+        if cinder_volumes and 'volume_id' in cinder_volumes[0]:
+            cinder_volume_ids = [vol['volume_id'] for vol in cinder_volumes]
+        elif cinder_volumes:
+            cinder_volume_ids = [vol['id'] for vol in cinder_volumes]
 
         for ai in app_instances:
             ai_name = ai['name']
@@ -728,41 +693,54 @@ class DateraApi(object):
             safe_to_manage = False
             reason_not_safe = ""
             cinder_id = None
-            extra_info = None
-            if re.match(datc.UUID4_RE, ai_name):
-                cinder_id = ai_name.lstrip(datc.OS_PREFIX)
-            if (not cinder_id and
-                    ai_name.lstrip(datc.OS_PREFIX) not in cinder_volume_ids):
-                safe_to_manage, reason_not_safe = self._is_manageable_2_2(ai)
-            if safe_to_manage:
-                si = list(ai['storage_instances'].values())[0]
-                si_name = si['name']
-                vol = list(si['volumes'].values())[0]
-                vol_name = vol['name']
-                size = vol['size']
-                reference = {"source-name": "{}:{}:{}".format(
-                    ai_name, si_name, vol_name)}
+            extra_info = {}
+            (safe_to_manage, reason_not_safe,
+                cinder_id) = self._is_manageable_2_2(ai, cinder_volume_ids)
+            si = ai['storage_instances'][0]
+            si_name = si['name']
+            vol = si['volumes'][0]
+            vol_name = vol['name']
+            size = vol['size']
+            snaps = [(snap['utc_ts'], snap['uuid'])
+                     for snap in vol['snapshots']]
+            extra_info["snapshots"] = json.dumps(snaps)
+            reference = {"source-name": "{}:{}:{}".format(
+                ai_name, si_name, vol_name)}
 
             results.append({
                 'reference': reference,
                 'size': size,
                 'safe_to_manage': safe_to_manage,
-                'reason_not_safe': reason_not_safe,
+                'reason_not_safe': _(reason_not_safe),
                 'cinder_id': cinder_id,
                 'extra_info': extra_info})
+            return results
 
+    def _get_manageable_volumes_2_2(self, cinder_volumes, marker, limit,
+                                    offset, sort_keys, sort_dirs):
+        LOG.debug("Listing manageable Datera volumes")
+        results = self._list_manageable_2_2(cinder_volumes)
         page_results = volutils.paginate_entries_list(
             results, marker, limit, offset, sort_keys, sort_dirs)
 
         return page_results
 
-    def _is_manageable_2_2(self, app_inst):
+    def _is_manageable_2_2(self, app_inst, cinder_volume_ids):
+        cinder_id = None
+        ai_name = app_inst['name']
+        if datc.UUID4_RE.match(ai_name):
+            cinder_id = ai_name.lstrip(datc.OS_PREFIX)
+        if cinder_id and cinder_id in cinder_volume_ids:
+            return (False,
+                    "App Instance already managed by Cinder",
+                    cinder_id)
         if len(app_inst['storage_instances']) == 1:
             si = list(app_inst['storage_instances'].values())[0]
             if len(si['volumes']) == 1:
-                return (True, "")
+                return (True, "", cinder_id)
         return (False,
-                "App Instance has more than one storage instance or volume")
+                "App Instance has more than one storage instance or volume",
+                cinder_id)
     # ============
     # = Unmanage =
     # ============
@@ -778,6 +756,69 @@ class DateraApi(object):
             body=data,
             api_version=API_VERSION,
             tenant=tenant)
+
+    # ===================
+    # = Manage Snapshot =
+    # ===================
+
+    def _manage_existing_snapshot_2_2(self, snapshot, existing_ref):
+        self._create_tenant_2_2(snapshot)
+        existing_ref = existing_ref['source-name']
+        datc._check_snap_ref(existing_ref)
+        LOG.debug("Managing existing Datera volume snapshot %s for volume %s",
+                  existing_ref, datc._get_name(snapshot['volume_id']))
+        return {'provider_location': existing_ref}
+
+    def _manage_existing_snapshot_get_size_2_2(self, snapshot, existing_ref):
+        tenant = self._create_tenant_2_2(snapshot)
+        existing_ref = existing_ref['source-name']
+        datc._check_snap_ref(existing_ref)
+        app_inst = self._issue_api_request(
+            datc.URL_TEMPLATES['ai_inst']().format(datc._get_name(
+                snapshot['volume_id'])),
+            api_version=API_VERSION, tenant=tenant)
+        return datc._get_size(app_inst=app_inst)
+
+    def _get_manageable_snapshots_2_2(self, cinder_snapshots, marker, limit,
+                                      offset, sort_keys, sort_dirs):
+        LOG.debug("Listing manageable Datera snapshots")
+        results = self._list_manageable_2_2(cinder_snapshots)
+        snap_results = []
+        snapids = set((snap['id'] for snap in cinder_snapshots))
+        snaprefs = set((snap.get('provider_location')
+                        for snap in cinder_snapshots))
+        for volume in results:
+            snaps = json.loads(volume["extra_info"]["snapshots"])
+            for snapshot in snaps:
+                reference = snapshot[0]
+                uuid = snapshot[1]
+                size = volume["size"]
+                safe_to_manage = True
+                reason_not_safe = ""
+                cinder_id = ""
+                extra_info = {}
+                source_reference = volume["reference"]
+                if uuid in snapids or reference in snaprefs:
+                    safe_to_manage = False
+                    reason_not_safe = _("already managed by Cinder")
+                elif not volume['safe_to_manage'] and not volume['cinder_id']:
+                    safe_to_manage = False
+                    reason_not_safe = _("parent volume not safe to manage")
+                snap_results.append({
+                    'reference': {'source-name': reference},
+                    'size': size,
+                    'safe_to_manage': safe_to_manage,
+                    'reason_not_safe': reason_not_safe,
+                    'cinder_id': cinder_id,
+                    'extra_info': extra_info,
+                    'source_reference': source_reference})
+        page_results = volutils.paginate_entries_list(
+            snap_results, marker, limit, offset, sort_keys, sort_dirs)
+
+        return page_results
+
+    def _unmanage_snapshot_2_2(self, snapshot):
+        return {'provider_location': None}
 
     # ====================
     # = Fast Image Clone =
@@ -1275,7 +1316,7 @@ class DateraApi(object):
                 datc._get_name(volume['id'])), method='put', body=data,
                 api_version=API_VERSION, tenant=tenant)
 
-    def _add_vol_meta(self, volume, connector=None):
+    def _add_vol_meta_2_2(self, volume, connector=None):
         if not self.do_metadata:
             return
         metadata = {'host': volume.get('host', ''),
