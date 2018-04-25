@@ -149,6 +149,24 @@ def create_unmanaged_vol(api, name, cm=False):
     return si_name, vol_name
 
 
+def create_unmanaged_snapshot(api, name):
+    ai = api.app_instances.get(name)
+    si = ai.storage_instances.list()[0]
+    vol = si.volumes.list()[0]
+    snap = vol.snapshots.create()
+    timeout = 10
+    while True:
+        if not timeout:
+            raise EnvironmentError(
+                "Snapshot did not become available before timeout")
+        snap = snap.reload()
+        if snap['op_state'] == 'available':
+            break
+        time.sleep(1)
+        timeout -= 1
+    return snap['utc_ts']
+
+
 def poll_available(obj, oid):
     timeout = 5
     while timeout:
@@ -173,6 +191,10 @@ def create_volume(name, size, vtype=None):
         output = exe("openstack volume create {} --size {}".format(name, size))
     return objid_from_output(output)
 
+###############
+# Basic Tests #
+###############
+
 
 @testcase
 def test_creation(api):
@@ -186,8 +208,12 @@ def test_creation(api):
         print("Failed to create volume {}".format(name))
         return
     time.sleep(2)
-    print(exe("openstack volume delete {}".format(name)))
+    exe("openstack volume delete {}".format(name))
 
+
+###################
+# Manage/Unmanage #
+###################
 
 @testcase
 def test_manage_style_1(api):
@@ -308,6 +334,22 @@ def test_unmanage(api):
         print("Unmanaged volume {} not found".format("UNMANAGED-"+volid))
         print(e)
         return
+
+
+@testcase
+def test_snapshot_manage(api):
+    name = tname("test-snapshot-manage")
+    volid = create_volume(name, 5)
+    time.sleep(2)
+    snap = create_unmanaged_snapshot(api, "OS-{}".format(volid))
+    result = exe("cinder snapshot-manage {volume} {snap}".format(
+        volume=volid, snap=snap))
+    snapid = objid_from_output(result)
+    poll_available("volume snapshot", snapid)
+    ts = exe("mysql -D cinder -e 'select provider_location from snapshots "
+             "where id = \"{}\"' -sN".format(snapid)).strip()
+    vassert(ts, snap)
+    exe("openstack volume delete {} --purge".format(volid))
 
 
 ################
