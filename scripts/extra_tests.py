@@ -22,6 +22,7 @@ VERBOSE = False
 
 O_VOLID_RE = re.compile("\| id.*\| (.*) \|")
 O_STATUS_RE = re.compile("\| status.*\| (.*) \|")
+O_SIZE_RE = re.compile("\| size.*\| (.*) \|")
 UUID4_RE = re.compile(
     "[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab][a-f0-9]{3}-?[a-f0-9]{12}")
 
@@ -77,11 +78,13 @@ def rname():
     return "-".join((random.choice(WORDS), random.choice(WORDS), "bear"))
 
 
-def vassert(val1, val2):
+def vassert(val1, val2, msg=""):
     try:
         assert val1 == val2
     except AssertionError:
         print("Assertion failed: [{}] != [{}]".format(val1, val2))
+        if msg:
+            print(msg)
         raise
 
 
@@ -124,6 +127,15 @@ def objid_from_output(output):
     return match.group(1)
 
 
+def size_from_output(output):
+    vprint("Getting size from output:")
+    vprint(output)
+    match = O_SIZE_RE.search(output)
+    if not match:
+        return
+    return int(match.group(1))
+
+
 def status_from_output(output):
     vprint("Getting status from output:")
     vprint(output)
@@ -135,6 +147,11 @@ def status_from_output(output):
 
 def getuuids(output):
     return UUID4_RE.findall(output)
+
+
+def mysql(query, db="cinder"):
+    return exe("mysql -D {db} -e '{query}' -sN".format(
+        query=query, db=db)).strip()
 
 
 def create_unmanaged_vol(api, name, cm=False):
@@ -339,16 +356,43 @@ def test_unmanage(api):
 @testcase
 def test_snapshot_manage(api):
     name = tname("test-snapshot-manage")
-    volid = create_volume(name, 5)
+    size = random.randint(1, 10)
+    volid = create_volume(name, size)
+    time.sleep(2)
+    snap = create_unmanaged_snapshot(api, "OS-{}".format(volid))
+    result = exe("cinder snapshot-manage {volume} {snap}".format(
+        volume=volid, snap=snap))
+    snapid = objid_from_output(result)
+    msize = size_from_output(result)
+    vassert(size, msize, msg="size does not match managed size")
+    poll_available("volume snapshot", snapid)
+    query = "select provider_location from snapshots where id = \"{}\"".format(
+        snapid)
+    ts = mysql(query)
+    vassert(ts, snap, msg="reference does not match utc_ts timestamp")
+    exe("openstack volume delete {} --purge".format(volid))
+
+
+@testcase
+def test_snapshot_manage_then_clone(api):
+    name = tname("test-snapshot-manage-clone")
+    size = random.randint(1, 10)
+    volid = create_volume(name, size)
     time.sleep(2)
     snap = create_unmanaged_snapshot(api, "OS-{}".format(volid))
     result = exe("cinder snapshot-manage {volume} {snap}".format(
         volume=volid, snap=snap))
     snapid = objid_from_output(result)
     poll_available("volume snapshot", snapid)
-    ts = exe("mysql -D cinder -e 'select provider_location from snapshots "
-             "where id = \"{}\"' -sN".format(snapid)).strip()
-    vassert(ts, snap)
+    clone_name = rname()
+    cloneid = None
+    result = exe(
+        "openstack volume create {} --snapshot {} --size {}".format(
+            clone_name, snapid, size))
+    cloneid = objid_from_output(result)
+    poll_available("volume", cloneid)
+    if cloneid:
+        exe("openstack volume delete {}".format(cloneid))
     exe("openstack volume delete {} --purge".format(volid))
 
 
@@ -445,7 +489,9 @@ def test_volume_type_placement_mode(api):
             volid = create_volume(vname, 5, vtype=vtname)
             poll_available("volume", volid)
             vol = getvol(api, volid)
-            vassert(vol["placement_mode"], pm)
+            vassert(vol["placement_mode"], pm,
+                    msg="placement_mode in volume type doesn't match mode "
+                        "read from app_instance")
 
 
 @testcase
@@ -459,7 +505,9 @@ def test_volume_type_ip_pool(api):
             volid = create_volume(vname, 5, vtype=vtname)
             poll_available("volume", volid)
             ai = getai(api, volid)
-            vassert(ai["storage_instances"][0]["ip_pool"]["path"], ip["path"])
+            vassert(ai["storage_instances"][0]["ip_pool"]["path"], ip["path"],
+                    msg="ip_pool in volume type doesn't match pool read from "
+                        "app_instance")
 
 
 @testcase
@@ -473,90 +521,100 @@ def test_volume_type_template(api):
             volid = create_volume(vname, 5, vtype=vtname)
             poll_available("volume", volid)
             ai = getai(api, volid)
-            vassert(ai["app_template"]["path"], at["path"])
+            vassert(ai["app_template"]["path"], at["path"],
+                    msg="template in volume type doesn't match template read "
+                        "from app_instance")
 
 
 #######
 # QoS #
 #######
 
+QOS_M = "{vt} in volume type doesn't match {vt} read from app_instance"
+
 
 @testcase
 def test_qos_read_bandwidth_max(api):
+    n = "read_bandwidth_max"
     qos_value = random.randint(200, 500)
     vtname = tname("test-qos-read-bw-max")
-    with create_volume_type(vtname, {"DF:read_bandwidth_max": qos_value,
+    with create_volume_type(vtname, {"DF:{}".format(n): qos_value,
                                      "DF:replica_count": 1}):
         vname = tname("test-qos-read-bw-max")
         volid = create_volume(vname, 5, vtype=vtname)
         poll_available("volume", volid)
         qos = getqos(api, volid)
-        vassert(qos["read_bandwidth_max"], qos_value)
+        vassert(qos[n], qos_value, msg=QOS_M.format(vt=n))
 
 
 @testcase
 def test_qos_write_bandwidth_max(api):
+    n = "write_bandwidth_max"
     qos_value = random.randint(200, 500)
     vtname = tname("test-qos-write-bw-max")
-    with create_volume_type(vtname, {"DF:write_bandwidth_max": qos_value,
+    with create_volume_type(vtname, {"DF:{}".format(n): qos_value,
                                      "DF:replica_count": 1}):
         vname = tname("test-qos-write-bw-max")
         volid = create_volume(vname, 5, vtype=vtname)
         poll_available("volume", volid)
         qos = getqos(api, volid)
-        vassert(qos["write_bandwidth_max"], qos_value)
+        vassert(qos[n], qos_value, msg=QOS_M.format(vt=n))
 
 
 @testcase
 def test_qos_total_bandwidth_max(api):
+    n = "total_bandwidth_max"
     qos_value = random.randint(200, 500)
     vtname = tname("test-qos-total-bw-max")
-    with create_volume_type(vtname, {"DF:total_bandwidth_max": qos_value,
+    with create_volume_type(vtname, {"DF:{}".format(n): qos_value,
                                      "DF:replica_count": 1}):
         vname = tname("test-qos-total-bw-max")
         volid = create_volume(vname, 5, vtype=vtname)
         poll_available("volume", volid)
         qos = getqos(api, volid)
-        vassert(qos["total_bandwidth_max"], qos_value)
+        vassert(qos[n], qos_value, msg=QOS_M.format(vt=n))
 
 
 @testcase
 def test_qos_read_iops_max(api):
+    n = "read_iops_max"
     qos_value = random.randint(200, 500)
     vtname = tname("test-qos-read-iops-max")
-    with create_volume_type(vtname, {"DF:read_iops_max": qos_value,
+    with create_volume_type(vtname, {"DF:{}".format(n): qos_value,
                                      "DF:replica_count": 1}):
         vname = tname("test-qos-read-iops-max")
         volid = create_volume(vname, 5, vtype=vtname)
         poll_available("volume", volid)
         qos = getqos(api, volid)
-        vassert(qos["read_iops_max"], qos_value)
+        vassert(qos[n], qos_value, msg=QOS_M.format(vt=n))
 
 
 @testcase
 def test_qos_write_iops_max(api):
+    n = "write_iops_max"
     qos_value = random.randint(200, 500)
     vtname = tname("test-qos-write-iops-max")
-    with create_volume_type(vtname, {"DF:write_iops_max": qos_value,
+    with create_volume_type(vtname, {"DF:{}".format(n): qos_value,
                                      "DF:replica_count": 1}):
         vname = tname("test-qos-write-iops-max")
         volid = create_volume(vname, 5, vtype=vtname)
         poll_available("volume", volid)
         qos = getqos(api, volid)
-        vassert(qos["write_iops_max"], qos_value)
+        vassert(qos[n], qos_value, msg=QOS_M.format(vt=n))
 
 
 @testcase
 def test_qos_total_iops_max(api):
+    n = "total_iops_max"
     qos_value = random.randint(200, 500)
     vtname = tname("test-qos-total-iops-max")
-    with create_volume_type(vtname, {"DF:total_iops_max": qos_value,
+    with create_volume_type(vtname, {"DF:{}".format(n): qos_value,
                                      "DF:replica_count": 1}):
         vname = tname("test-qos-total-iops-max")
         volid = create_volume(vname, 5, vtype=vtname)
         poll_available("volume", volid)
         qos = getqos(api, volid)
-        vassert(qos["total_iops_max"], qos_value)
+        vassert(qos[n], qos_value, msg=QOS_M.format(vt=n))
 
 
 @testcase
@@ -572,7 +630,10 @@ def test_qos_bandwidth_per_gb(api):
         volid = create_volume(vname, size, vtype=vtname)
         poll_available("volume", volid)
         qos = getqos(api, volid)
-        vassert(qos["total_bandwidth_max"], qos_value * size)
+        vassert(qos["total_bandwidth_max"], qos_value * size,
+                msg="total_bandwidth_max value on the app_instance does not "
+                    "match the value provided by bandwidth_per_gb * "
+                    "the size of the provisioned volume")
 
 
 @testcase
@@ -588,7 +649,10 @@ def test_qos_iops_per_gb(api):
         volid = create_volume(vname, size, vtype=vtname)
         poll_available("volume", volid)
         qos = getqos(api, volid)
-        vassert(qos["total_iops_max"], qos_value * size)
+        vassert(qos["total_iops_max"], qos_value * size,
+                msg="total_iops_max value on the app_instance does not "
+                    "match the value provided by iops_per_gb * "
+                    "the size of the provisioned volume")
 
 
 def main(args):
