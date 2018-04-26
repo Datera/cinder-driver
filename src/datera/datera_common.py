@@ -52,19 +52,18 @@ SNAP_RE = re.compile(r"\d{10,}\.\d+")
 
 # Recursive dict to assemble basic url structure for the most common
 # API URL endpoints. Most others are constructed from these
-URL_TEMPLATES = {
+URL_T = {
     'ai': lambda: 'app_instances',
-    'ai_inst': lambda: (URL_TEMPLATES['ai']() + '/{}'),
-    'si': lambda: (URL_TEMPLATES['ai_inst']() + '/storage_instances'),
-    'si_inst': lambda storage_name: (
-        (URL_TEMPLATES['si']() + '/{}').format(
-            '{}', storage_name)),
-    'vol': lambda storage_name: (
-        (URL_TEMPLATES['si_inst'](storage_name) + '/volumes')),
-    'vol_inst': lambda storage_name, volume_name: (
-        (URL_TEMPLATES['vol'](storage_name) + '/{}').format(
-            '{}', volume_name)),
-    'at': lambda: 'app_templates/{}'}
+    'ai_inst': lambda ai_name: (URL_T['ai']() + '/' + ai_name),
+    'si': lambda ai_name: (URL_T['ai_inst'](ai_name) +
+                           '/storage_instances'),
+    'si_inst': lambda ai_name, storage_name: (
+        URL_T['si'](ai_name) + '/' + storage_name),
+    'vol': lambda ai_name, storage_name: (
+        URL_T['si_inst'](ai_name, storage_name) + '/volumes'),
+    'vol_inst': lambda ai_name, storage_name, volume_name: (
+        URL_T['vol'](ai_name, storage_name) + '/' + volume_name),
+    'at': lambda at_name: 'app_templates/' + at_name}
 
 DEFAULT_SI_SLEEP = 1
 DEFAULT_SI_SLEEP_API_2 = 5
@@ -462,10 +461,18 @@ def _handle_bad_status(driver,
         driver._raise_response(response)
 
 
+def _format_tenant(tenant):
+    if tenant == "all" or (tenant and '/root' in tenant):
+        return tenant
+    elif tenant and '/root' not in tenant:
+        return "".join(("/root/", tenant))
+    return tenant
+
+
 @_authenticated
-def _issue_api_request(driver, resource_url, method='get', body=None,
-                       sensitive=False, conflict_ok=False,
-                       api_version=API_VERSIONS[0], tenant=None):
+def _issue_api_request(driver, resource_url, method, project_id,
+                       api_version=None, body=None, sensitive=False,
+                       conflict_ok=False):
     """All API requests to Datera cluster go through this method.
 
     :param resource_url: the url of the resource
@@ -496,14 +503,14 @@ def _issue_api_request(driver, resource_url, method='get', body=None,
     if api_token:
         header['Auth-Token'] = api_token
 
-    if tenant == "all":
-        header['tenant'] = tenant
-    elif tenant and '/root' not in tenant:
-        header['tenant'] = "".join(("/root/", tenant))
-    elif tenant and '/root' in tenant:
-        header['tenant'] = tenant
-    elif driver.tenant_id and driver.tenant_id.lower() != "map":
-        header['tenant'] = driver.tenant_id
+    if driver.tenant_id.lower() == "map":
+        if not project_id:
+            raise ValueError("Need project_id for 'Map' tenant")
+        tenant = _get_name(str(uuid.UUID(project_id)))
+    else:
+        tenant = driver.tenant_id
+
+    header['tenant'] = _format_tenant(tenant)
 
     client_cert = driver.configuration.driver_client_cert
     client_cert_key = driver.configuration.driver_client_cert_key
