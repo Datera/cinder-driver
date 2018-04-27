@@ -659,7 +659,7 @@ class DateraApi(object):
                 'reason_not_safe': _(reason_not_safe),
                 'cinder_id': cinder_id,
                 'extra_info': extra_info})
-            return results
+        return results
 
     def _get_manageable_volumes_2_2(self, cinder_volumes, marker, limit,
                                     offset, sort_keys, sort_dirs):
@@ -680,7 +680,7 @@ class DateraApi(object):
                     "App Instance already managed by Cinder",
                     cinder_id)
         if len(app_inst['storage_instances']) == 1:
-            si = list(app_inst['storage_instances'].values())[0]
+            si = app_inst['storage_instances'][0]
             if len(si['volumes']) == 1:
                 return (True, "", cinder_id)
         return (False,
