@@ -382,8 +382,8 @@ class DateraApi(object):
     def _clean_acl_2_2(self, volume):
         store_name, _ = self._scrape_ai_2_2(volume)
 
-        acl_url = (datc.URL_T["si_inst"](
-            store_name) + "/acl_policy").format(datc._get_name(volume['id']))
+        acl_url = datc.URL_T["si_inst"](
+            datc._get_name(volume['id']), store_name) + "/acl_policy"
         try:
             initiator_group = self._api22(
                 acl_url, 'get',  volume['project_id'])['data'][
@@ -408,7 +408,8 @@ class DateraApi(object):
 
     def _create_snapshot_2_2(self, snapshot):
 
-        dummy_vol = {'id': snapshot['volume_id']}
+        dummy_vol = {'id': snapshot['volume_id'],
+                     'project_id': snapshot['project_id']}
         store_name, vol_name = self._scrape_ai_2_2(dummy_vol)
 
         url = datc.URL_T['vol_inst'](
@@ -429,7 +430,8 @@ class DateraApi(object):
 
     def _delete_snapshot_2_2(self, snapshot):
         # Handle case where snapshot is "managed"
-        dummy_vol = {'id': snapshot['volume_id']}
+        dummy_vol = {'id': snapshot['volume_id'],
+                     'project_id': snapshot['project_id']}
         store_name, vol_name = self._scrape_ai_2_2(dummy_vol)
         vol_id = datc._get_name(snapshot['volume_id'])
 
@@ -478,7 +480,8 @@ class DateraApi(object):
 
     def _create_volume_from_snapshot_2_2(self, volume, snapshot):
         # Handle case where snapshot is "managed"
-        dummy_vol = {'id': snapshot['volume_id']}
+        dummy_vol = {'id': snapshot['volume_id'],
+                     'project_id': snapshot['project_id']}
         store_name, vol_name = self._scrape_ai_2_2(dummy_vol)
         vol_id = datc._get_name(snapshot['volume_id'])
 
