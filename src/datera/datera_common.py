@@ -469,6 +469,13 @@ def _format_tenant(tenant):
     return tenant
 
 
+def _create_tenant(driver, tenant):
+    api_versions = driver._get_supported_api_versions()
+    api = api_versions[-1]
+    driver._issue_api_request('tenants', 'post', 'TENANT', api_version=api,
+                              body={'name': tenant}, conflict_ok=True)
+
+
 @_authenticated
 def _issue_api_request(driver, resource_url, method, project_id,
                        api_version=None, body=None, sensitive=False,
@@ -503,14 +510,21 @@ def _issue_api_request(driver, resource_url, method, project_id,
     if api_token:
         header['Auth-Token'] = api_token
 
-    if driver.tenant_id.lower() == "map":
-        if not project_id:
+    if project_id == 'LOGIN':
+        tenant = None
+    elif driver.tenant_id.lower() == "map":
+        if project_id in ('STATS', 'TENANT'):
+            tenant = None
+        elif not project_id:
             raise ValueError("Need project_id for 'Map' tenant")
-        tenant = _get_name(str(uuid.UUID(project_id)))
+        else:
+            tenant = _get_name(str(uuid.UUID(project_id)))
+            driver._create_tenant(tenant)
     else:
         tenant = driver.tenant_id
 
-    header['tenant'] = _format_tenant(tenant)
+    if tenant:
+        header['tenant'] = _format_tenant(tenant)
 
     client_cert = driver.configuration.driver_client_cert
     client_cert_key = driver.configuration.driver_client_cert_key
@@ -589,6 +603,7 @@ def register_driver(driver):
                  _request,
                  _raise_response,
                  _handle_bad_status,
+                 _create_tenant,
                  _issue_api_request]:
         # PY27
 

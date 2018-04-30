@@ -996,7 +996,7 @@ class DateraApi(object):
         try:
             LOG.debug('Getting Datera auth token.')
             results = self._api22(
-                'login', 'put',  None, body=body, sensitive=True)
+                'login', 'put',  'LOGIN', body=body, sensitive=True)
             self.datera_api_token = results['key']
         except exception.NotAuthorized:
             with excutils.save_and_reraise_exception():
@@ -1056,8 +1056,7 @@ class DateraApi(object):
             try:
                 LOG.debug("Updating cluster stats info.")
 
-                results = self._api22(
-                    'system', 'get',  None)['data']
+                results = self._api22('system', 'get',  'STATS')['data']
 
                 if 'uuid' not in results:
                     LOG.error(

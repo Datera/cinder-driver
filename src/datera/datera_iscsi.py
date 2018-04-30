@@ -148,8 +148,9 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         2018.4.17.1 - Bugfixes to IP Pools, Templates and Initiators
         2018.4.25.0 - Snapshot Manage.  List Manageable Snapshots support
         2018.4.27.0 - Major driver revamp/restructure, no functionality change
+        2018.5.1.0 - Bugfix for Map tenant auto-creation
     """
-    VERSION = '2018.4.27.0'
+    VERSION = '2018.5.1.0'
 
     CI_WIKI_NAME = "datera-ci"
 

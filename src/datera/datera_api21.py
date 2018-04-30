@@ -302,9 +302,7 @@ class DateraApi(object):
             initiator = connector['initiator']
             initiator_path = "/initiators/{}".format(initiator)
             if not found:
-                # TODO(_alastor_): Take out the 'force' flag when we fix
-                # DAT-15931
-                data = {'id': initiator, 'name': initiator_name, 'force': True}
+                data = {'id': initiator, 'name': initiator_name}
                 # Try and create the initiator
                 # If we get a conflict, ignore it
                 self._api21("initiators",
@@ -996,7 +994,7 @@ class DateraApi(object):
         try:
             LOG.debug('Getting Datera auth token.')
             results = self._api21(
-                'login', 'put',  None, body=body, sensitive=True)
+                'login', 'put',  'LOGIN', body=body, sensitive=True)
             self.datera_api_token = results['key']
         except exception.NotAuthorized:
             with excutils.save_and_reraise_exception():
@@ -1056,8 +1054,7 @@ class DateraApi(object):
             try:
                 LOG.debug("Updating cluster stats info.")
 
-                results = self._api21(
-                    'system', 'get',  None)['data']
+                results = self._api21('system', 'get',  'STATS')['data']
 
                 if 'uuid' not in results:
                     LOG.error(
@@ -1087,8 +1084,8 @@ class DateraApi(object):
 
     def _update_qos_2_1(self, volume, policies, clear_old=False):
         si, vol = self._scrape_ai_2_1(volume)
-        url = datc.URL_T['vol_inst'](si, vol) + '/performance_policy'
-        url = url.format(datc._get_name(volume['id']))
+        url = datc.URL_T['vol_inst'](datc._get_name(volume['id']), si, vol)
+        url += "/performance_policy"
         type_id = volume.get('volume_type_id', None)
         if type_id is not None:
             iops_per_gb = int(policies.get('iops_per_gb', 0))
