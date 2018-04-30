@@ -6,6 +6,8 @@ from scaffold import read_cinder_conf, getAPI
 import argparse
 import contextlib
 import functools
+import io
+import os
 import random
 import re
 import shlex
@@ -16,7 +18,7 @@ import time
 import traceback
 import uuid
 
-from dfs_sdk.exceptions import ApiNotFoundError
+from dfs_sdk.exceptions import ApiNotFoundError, ApiInvalidRequestError
 
 VERBOSE = False
 
@@ -48,17 +50,18 @@ def testcase(func):
     def _wrapper(*args, **kwargs):
         name = func.__name__
         try:
-            print("Running:", name)
+            print("Running:", name, end="")
+            print(" ... ", end="")
             func(*args, **kwargs)
             _PASS.append(name)
-            print("SUCCESS", name)
+            print("ok")
         except XFailError as e:
-            print("XFAILED: ", name, e)
+            print("XFAILED: ", e)
             _XFAIL.append(name)
             print(traceback.print_exc())
         except Exception as e:
             _FAIL.append(name)
-            print("FAILED: ", name, e)
+            print("FAILED: ", e)
             print(traceback.print_exc())
 
     _TESTS.append(_wrapper)
@@ -154,6 +157,17 @@ def mysql(query, db="cinder"):
         query=query, db=db)).strip()
 
 
+def getproject():
+    name = os.getenv("OS_PROJECT_NAME")
+    output = exe("openstack project list -f value".format(name)).strip()
+    reg = r"(.*) \b{}\b".format(name)
+    O_PROJ_RE = re.compile(reg)
+    match = O_PROJ_RE.search(output)
+    if not match:
+        return
+    return str(uuid.UUID(match.group(1)))
+
+
 def create_unmanaged_vol(api, name, cm=False):
     si_name = rname()
     vol_name = rname()
@@ -207,6 +221,7 @@ def create_volume(name, size, vtype=None):
     else:
         output = exe("openstack volume create {} --size {}".format(name, size))
     return objid_from_output(output)
+
 
 ###############
 # Basic Tests #
@@ -340,7 +355,7 @@ def test_unmanage(api):
     name = tname("test-unmanage")
     volid = objid_from_output(exe(
         "openstack volume create {} --size 5".format(name)))
-    time.sleep(2)
+    poll_available("volume", volid)
     vprint(exe("cinder unmanage {}".format(name)))
     time.sleep(2)
     try:
@@ -655,16 +670,65 @@ def test_qos_iops_per_gb(api):
                     "the size of the provisioned volume")
 
 
+def restart_cvol():
+    exe("sudo service devstack@c-vol restart")
+
+
+def set_conf_tenant(tenant):
+    conf = "/etc/cinder/cinder.conf"
+    tdata = "datera_tenant_id = {}".format(tenant)
+    with io.open(conf, 'r') as f:
+        data = f.readlines()
+        for index, line in enumerate(data):
+            if line.startswith("datera_tenant_id"):
+                data[index] = tdata
+                break
+        else:
+            for index, line in enumerate(data):
+                if line.startswith("[datera]"):
+                    data.insert(index+1, tdata)
+                    break
+            else:
+                raise EnvironmentError("[datera] section not found")
+    with io.open(conf, 'w') as f:
+        f.writelines(data)
+
+
 def main(args):
+    if args.tenant:
+        set_conf_tenant(args.tenant)
+        restart_cvol()
+    if (args.tenant and args.tenant.lower() != "map" and
+            "/root" not in args.tenant):
+        args.tenant = "/root/{}".format(args.tenant.strip("/"))
     san_ip, san_login, san_password, tenant = read_cinder_conf()
-    api = getAPI(
-        san_ip, san_login, san_password, tenant=tenant, version="v2.2")
+    if tenant.lower().endswith("map"):
+        tenant = "OS-{}".format(getproject())
+    try:
+        api = getAPI(
+            san_ip, san_login, san_password, tenant=tenant, version="v2.2")
+    except ApiInvalidRequestError:
+        api = getAPI(
+            san_ip, san_login, san_password, tenant=tenant, version="v2.1")
     # Tests
-    tests = _TESTS
+    ptests = set(_TESTS)
+    tests = set()
     if args.filter:
-        tests = filter(lambda x: args.filter in x.__name__ or
-                       args.filter == x.__name__, tests)
-    for test in tests:
+        for f in args.filter:
+            tests.update(
+                filter(lambda x: f in x.__name__ or f == x.__name__, ptests))
+    else:
+        tests = ptests
+    if args.list_tests:
+        print("TESTS")
+        print("-----")
+        for test in sorted(tests):
+            print(test.__name__)
+        sys.exit(0)
+    for test in sorted(tests):
+        if args.stop_on_failure and len(_FAIL) > 0:
+            print("Detected failure, stopping tests")
+            sys.exit(1)
         test(api)
 
     print()
@@ -680,7 +744,10 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--verbose", action="store_true")
-    parser.add_argument("-f", "--filter")
+    parser.add_argument("-f", "--filter", default=[], action='append')
+    parser.add_argument("-t", "--tenant")
+    parser.add_argument("-l", "--list-tests", action="store_true")
+    parser.add_argument("-x", "--stop-on-failure", action="store_true")
     args = parser.parse_args()
     VERBOSE = args.verbose
     sys.exit(main(args))
