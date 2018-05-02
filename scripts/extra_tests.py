@@ -735,6 +735,7 @@ def main(args):
     print("----------")
     print("| REPORT |")
     print("----------")
+    print("Tenant:", tenant)
     print("PASSED:", len(_PASS))
     print("FAILED:", len(_FAIL))
     print("XFAILED:", len(_XFAIL))
