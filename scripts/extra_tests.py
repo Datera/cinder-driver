@@ -702,6 +702,8 @@ def main(args):
             "/root" not in args.tenant):
         args.tenant = "/root/{}".format(args.tenant.strip("/"))
     san_ip, san_login, san_password, tenant = read_cinder_conf()
+    if not tenant:
+        tenant = args.tenant
     if tenant.lower().endswith("map"):
         tenant = "OS-{}".format(getproject())
     try:
@@ -746,7 +748,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("-f", "--filter", default=[], action='append')
-    parser.add_argument("-t", "--tenant")
+    parser.add_argument("-t", "--tenant", default='')
     parser.add_argument("-l", "--list-tests", action="store_true")
     parser.add_argument("-x", "--stop-on-failure", action="store_true")
     args = parser.parse_args()

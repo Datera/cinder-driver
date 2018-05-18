@@ -59,7 +59,7 @@ d_opts = [
                 help="ONLY FOR DEBUG/TESTING PURPOSES\n"
                      "True to set replica_count to 1"),
     cfg.StrOpt('datera_tenant_id',
-               default=None,
+               default='',
                help="If set to 'Map' --> OpenStack project ID will be mapped "
                     "implicitly to Datera tenant ID\n"
                     "If set to 'None' --> Datera tenant ID will not be used "
@@ -149,8 +149,9 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         2018.4.25.0 - Snapshot Manage.  List Manageable Snapshots support
         2018.4.27.0 - Major driver revamp/restructure, no functionality change
         2018.5.1.0 - Bugfix for Map tenant auto-creation
+        2018.5.18.0 - Bugfix for None tenant handling
     """
-    VERSION = '2018.5.1.0'
+    VERSION = '2018.5.18.0'
 
     CI_WIKI_NAME = "datera-ci"
 
@@ -174,6 +175,8 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         if self.datera_debug:
             utils.setup_tracing(['method'])
         self.tenant_id = self.configuration.datera_tenant_id
+        if self.tenant_id is None:
+            self.tenant_id = ''
         self.defaults = self.configuration.datera_volume_type_defaults
         if self.tenant_id and self.tenant_id.lower() == 'none':
             self.tenant_id = None
