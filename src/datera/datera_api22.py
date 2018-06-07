@@ -797,7 +797,8 @@ class DateraApi(object):
         # Dummy volume, untracked by Cinder
         src_vol = {'id': image_meta['id'],
                    'volume_type_id': self.image_type,
-                   'size': volume['size']}
+                   'size': volume['size'],
+                   'project_id': volume['project_id']}
 
         # Determine if we have a cached version of the image
         cached = self._vol_exists_2_2(src_vol)

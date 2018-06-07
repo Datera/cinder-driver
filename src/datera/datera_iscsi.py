@@ -150,8 +150,9 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         2018.4.27.0 - Major driver revamp/restructure, no functionality change
         2018.5.1.0 - Bugfix for Map tenant auto-creation
         2018.5.18.0 - Bugfix for None tenant handling
+        2018.6.7.0 - Bugfix for missing project_id during image clone
     """
-    VERSION = '2018.5.18.0'
+    VERSION = '2018.6.7.0'
 
     CI_WIKI_NAME = "datera-ci"
 
