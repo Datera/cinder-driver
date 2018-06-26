@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 from __future__ import unicode_literals, division, print_function
 
-import argparse
 import errno
 import io
 import os
@@ -15,14 +14,14 @@ import time
 
 import arrow
 import six
-import requests
 
-from scaffold import read_cinder_conf
+from dfs_sdk import scaffold
 
-VERSION = '1.1'
+VERSION = '1.2'
 VERSION_HISTORY = """
     1.0 - Initial Callhome Version
     1.1 - Added Journalctl support
+    1.2 - Support for Python-SDK.  Additional flags
 """
 SUCCESS = 0
 FAILURE = 1
@@ -62,36 +61,17 @@ def mk_archive(directory, output_fn):
 
 
 def post_archive(fn):
-    ip, user, password, cert, cert_key = read_cinder_conf()
-    schema = 'http'
-    port = 7717
-    cert_data = None
-    if cert and cert_key:
-        schema = 'https'
-        port = 7718
-        cert_data = (cert, cert_key)
-    # login
-    resp = requests.put("{}://{}:{}/v2.1/login".format(
-        schema, ip, port), data={"name": user, "password": password},
-        cert=cert_data)
-    key = resp.json()["key"]
-    print(key)
-    headers = {"Auth-Token": key,
-               "Datera-Driver": "Cinder-Logging-".format(VERSION)}
-    # Put file
+    api = scaffold.get_api(strict=False)
     fname = os.path.basename(fn)
     files = {'file': (fname, io.open(fn, 'rb'))}
     print("Uploading File: ", fn)
-    resp = requests.put("{}://{}:{}/v2.1/logs_upload".format(
-        schema, ip, port), files=files, headers=headers,
-        data={'ecosystem': 'openstack'})
-    print("Response: ", resp.text)
+    api.logs_upload.upload(files=files, ecosystem='openstack')
 
 
 def copy_filter_files(files, pts, ts, journalctl=False):
     # Create temp directory and archive filename
     tmpd = tempfile.mkdtemp()
-    host = exe("hostname")
+    host = exe("hostname").strip()
     tmpfn = "cinder-logs.{}.{}.{}.tar.gz".format(
         host, pts.timestamp, ts.timestamp)
     tmpdfn = os.path.join(tmpd, tmpfn)
@@ -112,26 +92,29 @@ def copy_filter_files(files, pts, ts, journalctl=False):
         else:
             shutil.copyfile(file, fname)
 
-    # Create filter filenames
-    rfile = os.path.join(tmpd, "requests.json")
-    afile = os.path.join(tmpd, "attach_detach.json")
-
     tmpfiles = " ".join((os.path.join(tmpd, os.path.basename(file))
                         for file in files))
-    # Filter for requests
-    if journalctl:
-        jstring = "--journalctl"
-    else:
-        jstring = ""
     print("tmpfiles: ", tmpfiles)
-    with io.open(rfile, "w+") as f:
-        exe("./sreq.py {} --json --filter REQTIME@@{} "
-            "--filter REQTIME**{} {}".format(
-                tmpfiles, ts.timestamp, pts.timestamp, jstring), stdout=f)
+    if not args.raw_logs:
+        # Create filter filenames
+        rfile = os.path.join(tmpd, "requests.json")
+        afile = os.path.join(tmpd, "attach_detach.json")
 
-    # Filter for attach_detach
-    with io.open(afile, "w+") as f:
-        exe("./sreq.py {} --json --attach-detach".format(tmpfiles), stdout=f)
+        # Filter for requests
+        if journalctl:
+            jstring = "--journalctl"
+        else:
+            jstring = ""
+        with io.open(rfile, "w+") as f:
+            exe("./sreq.py {} --json --filter REQTIME@@{} "
+                "--filter REQTIME**{} {}".format(
+                    tmpfiles, pts.timestamp, ts.timestamp, jstring),
+                stdout=f)
+
+        # Filter for attach_detach
+        with io.open(afile, "w+") as f:
+            exe("./sreq.py {} --json --attach-detach".format(tmpfiles),
+                stdout=f)
 
     # Compress Files
     mk_archive(tmpd, tmpdfn)
@@ -181,18 +164,28 @@ def main(args):
         with io.open(tsfile, 'w') as f:
             f.write(six.u(str(timestamp.timestamp)))
 
+        if args.once_only:
+            break
         # Default collect every hour
         time.sleep(INTERVAL)
     return SUCCESS
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = scaffold.get_argparser()
     parser.add_argument('logfiles', nargs='*')
     parser.add_argument('-j', '--journalctl', action='store_true',
                         help='If present, logfiles argument (or {} environment'
                              ' variable value) will be interpreted as a '
                              '"journalctl" unit'.format(LOGFILE_VAR))
-    parser.add_argument('-v', '--version', action='store_true',
+    parser.add_argument('-s', '--version', action='store_true',
                         help='Show callhome script version')
+
+    parser.add_argument('-r', '--raw-logs', action='store_true',
+                        help="Do not process logs. This is useful if Cinder "
+                             "and the Datera Cinder driver are not set to "
+                             "'debug' mode")
+    parser.add_argument('-o', '--once-only', action='store_true',
+                        help="Upload logs once and exit, does not run daemon")
     args = parser.parse_args()
     sys.exit(main(args))

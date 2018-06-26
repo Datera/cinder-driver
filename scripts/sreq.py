@@ -21,8 +21,9 @@ VERSION HISTORY:
     1.1.0 -- Adding journalctl compatibility
     1.2.0 -- Added ability to leave off field in --filter to check all fields
     1.2.1 -- Moved some stuff out into sreq_common
+    1.2.2 -- Compatibility updates
 """
-VERSION = "v1.2.1"
+VERSION = "v1.2.2"
 
 USAGE = """
 
@@ -292,7 +293,7 @@ def gen_log_blocks(data):
         prev = line
 
 
-def get_match_dict(data, journalctl=False):
+def get_match_dict(args, data, journalctl=False):
     found = {}
 
     log_blocks = gen_log_blocks(data)
@@ -430,7 +431,7 @@ def main(args):
         get_attach_detach(args, data)
         sys.exit(0)
 
-    found = get_match_dict(data, args.journalctl).values()
+    found = get_match_dict(args, data, args.journalctl).values()
 
     if args.filter:
         found = get_filtered(args.filter, found, TUP_VALS)
