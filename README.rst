@@ -2,6 +2,15 @@
 Datera Cinder Repository
 ========================
 
+----------------------------------------
+Datera Cinder Volume Driver Installation
+----------------------------------------
+
+1. Clone Repository ``git clone http://github.com/Datera/cinder-driver``
+2. Copy Driver ``cd cinder-driver && cp src/datera/*.py /usr/local/lib/pythonX.X/dist-packages/cinder/volume/drivers/datera``
+3. Install Python-SDK ``sudo pip install git+http://github.com/Datera/python-sdk``
+4. Restart Cinder ``service cinder-volume restart``
+
 ------------------------------------
 Datera Volume Driver Version History
 ------------------------------------
@@ -12,6 +21,16 @@ Datera Volume Driver Version History
 
    * - Version
      - Changes
+   * - 2018.7.13.0
+     - Massive update porting to use the Datera Python-SDK
+   * - 2018.6.7.0
+     - Bugfix for missing project_id during image clone
+   * - 2018.5.18.0
+     - Bugfix for None tenant handling
+   * - 2018.5.1.0
+     - Bugfix for Map tenant auto-creation
+   * - 2018.4.27.0
+     - Major driver revamp/restructure, no functionality change
    * - 2018.4.17.1
      - Bugfixes to IP Pools, Templates and Initiators
    * - 2018.4.5.0

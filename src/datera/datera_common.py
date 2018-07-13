@@ -14,19 +14,14 @@
 #    under the License.
 
 import functools
-import json
 import re
-import six
 import time
 import types
 import uuid
 
-import eventlet
-import requests
+import dfs_sdk
 
 from oslo_log import log as logging
-from oslo_utils import encodeutils as eu
-from six.moves import http_client
 
 from cinder import context
 from cinder import exception
@@ -45,26 +40,13 @@ UNMANAGE_PREFIX = "UNMANAGED-"
 # http://stackoverflow.com/a/18516125
 # Using old-style string formatting because of the nature of the regex
 # conflicting with new-style curly braces
-UUID4_STR_RE = ("%s[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab]"
-                "[a-f0-9]{3}-?[a-f0-9]{12}")
+UUID4_STR_RE = ("%s.*([a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab]"
+                "[a-f0-9]{3}-?[a-f0-9]{12})")
 UUID4_RE = re.compile(UUID4_STR_RE % OS_PREFIX)
 SNAP_RE = re.compile(r"\d{10,}\.\d+")
 
 # Recursive dict to assemble basic url structure for the most common
 # API URL endpoints. Most others are constructed from these
-URL_T = {
-    'ai': lambda: 'app_instances',
-    'ai_inst': lambda ai_name: (URL_T['ai']() + '/' + ai_name),
-    'si': lambda ai_name: (URL_T['ai_inst'](ai_name) +
-                           '/storage_instances'),
-    'si_inst': lambda ai_name, storage_name: (
-        URL_T['si'](ai_name) + '/' + storage_name),
-    'vol': lambda ai_name, storage_name: (
-        URL_T['si_inst'](ai_name, storage_name) + '/volumes'),
-    'vol_inst': lambda ai_name, storage_name, volume_name: (
-        URL_T['vol'](ai_name, storage_name) + '/' + volume_name),
-    'at': lambda at_name: 'app_templates/' + at_name}
-
 DEFAULT_SI_SLEEP = 1
 DEFAULT_SI_SLEEP_API_2 = 5
 DEFAULT_SNAP_SLEEP = 1
@@ -91,113 +73,24 @@ def _get_unmanaged(name):
     return "".join((UNMANAGE_PREFIX, name))
 
 
-def _authenticated(func):
-    """Ensure the driver is authenticated to make a request.
-
-    In do_setup() we fetch an auth token and store it. If that expires when
-    we do API request, we'll fetch a new one.
-    """
-    @functools.wraps(func)
-    def func_wrapper(driver, *args, **kwargs):
-        try:
-            return func(driver, *args, **kwargs)
-        except exception.NotAuthorized:
-            # Prevent recursion loop. After the driver arg is the
-            # resource_type arg from _issue_api_request(). If attempt to
-            # login failed, we should just give up.
-            if args[0] == 'login':
-                raise
-
-            # Token might've expired, get a new one, try again.
-            driver.login()
-            return func(driver, *args, **kwargs)
-    return func_wrapper
-
-
-def _api_lookup(func):
-    """Perform a dynamic API implementation lookup for a call
-
-    Naming convention follows this pattern:
-
-        # original_func(args) --> _original_func_X_?Y?(args)
-        # where X and Y are the major and minor versions of the latest
-        # supported API version
-
-        # From the Datera box we've determined that it supports API
-        # versions ['2.1', '2.2']
-        # This is the original function call
-        @_api_lookup
-        def original_func(arg1, arg2):
-            print("I'm a shim, this won't get executed!")
-            pass
-
-        # This is the function that is actually called after determining
-        # the correct API version to use
-        def _original_func_2_1(arg1, arg2):
-            some_version_2_1_implementation_here()
-
-        # This is the function that would be called if the previous function
-        # did not exist:
-        def _original_func_2(arg1, arg2):
-            some_version_2_implementation_here()
-
-        # This function would NOT be called, because the connected Datera box
-        # does not support the 1.5 version of the API
-        def _original_func_1_5(arg1, arg2):
-            some_version_1_5_implementation_here()
-    """
+def lookup(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         obj = args[0]
-        api_versions = _get_supported_api_versions(obj)
-        api_version = None
-        index = -1
-        while True:
-            try:
-                api_version = api_versions[index]
-            except (IndexError, KeyError):
-                msg = _("No compatible API version found for this product: "
-                        "api_versions -> %(api_version)s, %(func)s")
-                LOG.error(msg, api_version=api_version, func=func)
-                raise exception.DateraAPIException(msg % {
-                    'api_version': api_version, 'func': func})
-            # Py27
-            try:
-                name = "_" + "_".join(
-                    (func.func_name, api_version.replace(".", "_")))
-            # Py3+
-            except AttributeError:
-                name = "_" + "_".join(
-                    (func.__name__, api_version.replace(".", "_")))
-            try:
-                if obj.do_profile:
-                    LOG.debug("Trying method: %s", name)
-                    call_id = uuid.uuid4()
-                    LOG.debug("Profiling method: %s, id %s", name, call_id)
-                    t1 = time.time()
-                obj.thread_local.trace_id = call_id
-                result = getattr(obj, name)(*args[1:], **kwargs)
-                if obj.do_profile:
-                    t2 = time.time()
-                    timedelta = round(t2 - t1, 3)
-                    LOG.debug("Profile for method %s, id %s: %ss",
-                              name, call_id, timedelta)
-                return result
-            except AttributeError as e:
-                # If we find the attribute name in the error message
-                # then we continue otherwise, raise to prevent masking
-                # errors
-                if name not in six.text_type(e):
-                    raise
-                else:
-                    LOG.info(e)
-                    index -= 1
-            except exception.DateraAPIException as e:
-                if "UnsupportedVersionError" in six.text_type(e):
-                    index -= 1
-                else:
-                    raise
-
+        name = "_" + func.func_name + "_" + obj.apiv.replace(".", "_")
+        LOG.debug("Trying method: %s", name)
+        call_id = uuid.uuid4()
+        if obj.do_profile:
+            LOG.debug("Profiling method: %s, id %s", name, call_id)
+            t1 = time.time()
+        obj.thread_local.trace_id = call_id
+        result = getattr(obj, name)(*args[1:], **kwargs)
+        if obj.do_profile:
+            t2 = time.time()
+            timedelta = round(t2 - t1, 3)
+            LOG.debug("Profile for method %s, id %s: %ss",
+                      name, call_id, timedelta)
+        return result
     return wrapper
 
 
@@ -239,42 +132,6 @@ def _get_size(app_inst):
     found_si = sis[0]
     found_vol = found_si['volumes'][0]
     return found_vol['size']
-
-
-def _get_supported_api_versions(driver):
-    t = time.time()
-    if driver.api_cache and driver.api_timeout - t < API_TIMEOUT:
-        return driver.api_cache
-    driver.api_timeout = t + API_TIMEOUT
-    results = []
-    host = driver.configuration.san_ip
-    port = driver.configuration.datera_api_port
-    client_cert = driver.configuration.driver_client_cert
-    client_cert_key = driver.configuration.driver_client_cert_key
-    cert_data = None
-    header = {'Content-Type': 'application/json; charset=utf-8',
-              'Datera-Driver': 'OpenStack-Cinder-{}'.format(driver.VERSION)}
-    protocol = 'http'
-    if client_cert:
-        protocol = 'https'
-        cert_data = (client_cert, client_cert_key)
-    try:
-        url = '%s://%s:%s/api_versions' % (protocol, host, port)
-        resp = driver._request(url, "get", None, header, cert_data)
-        data = resp.json()
-        results = [elem.strip("v") for elem in data['api_versions']]
-    except (exception.DateraAPIException, KeyError):
-        # Fallback to pre-endpoint logic
-        for version in API_VERSIONS[0:-1]:
-            url = '%s://%s:%s/v%s' % (protocol, host, port, version)
-            resp = driver._request(url, "get", None, header, cert_data)
-            if ("api_req" in resp.json() or
-                    str(resp.json().get("code")) == "99"):
-                results.append(version)
-            else:
-                LOG.error("No supported API versions available, "
-                          "Please upgrade your Datera EDF software")
-    return results
 
 
 def _get_volume_type_obj(driver, resource):
@@ -387,224 +244,72 @@ def _image_accessible(driver, context, volume, image_meta):
     return public
 
 
-# ================
-# = API Requests =
-# ================
-
-def _request(driver, connection_string, method, payload, header, cert_data,
-             sensitive=False):
-    LOG.debug("Endpoint for Datera API call: %s", connection_string)
-    if not sensitive:
-        LOG.debug("Payload for Datera API call: %s", payload)
-    try:
-        response = getattr(requests, method)(connection_string,
-                                             data=payload, headers=header,
-                                             verify=False, cert=cert_data)
-        return response
-    except requests.exceptions.RequestException as ex:
-        msg = _(
-            'Failed to make a request to Datera cluster endpoint due '
-            'to the following reason: %s') % six.text_type(
-            ex.message)
-        LOG.error(msg)
-        raise exception.DateraAPIException(msg)
-
-
-def _raise_response(driver, response):
-    msg = _('Request to Datera cluster returned bad status:'
-            ' %(status)s | %(reason)s') % {
-                'status': response.status_code,
-                'reason': response.reason}
-    LOG.error(msg)
-    raise exception.DateraAPIException(msg)
-
-
-def _handle_bad_status(driver,
-                       response,
-                       connection_string,
-                       method,
-                       payload,
-                       header,
-                       cert_data,
-                       sensitive=False,
-                       conflict_ok=False):
-    if (response.status_code == http_client.BAD_REQUEST and
-            connection_string.endswith("api_versions")):
-        # Raise the exception, but don't log any error.  We'll just fall
-        # back to the old style of determining API version.  We make this
-        # request a lot, so logging it is just noise
-        raise exception.DateraAPIException
-    if response.status_code == http_client.NOT_FOUND:
-        raise exception.NotFound(response.json()['message'])
-    elif response.status_code in [http_client.FORBIDDEN,
-                                  http_client.UNAUTHORIZED]:
-        raise exception.NotAuthorized()
-    elif response.status_code == http_client.CONFLICT and conflict_ok:
-        # Don't raise, because we're expecting a conflict
-        pass
-    elif response.status_code == http_client.SERVICE_UNAVAILABLE:
-        current_retry = 0
-        while current_retry <= driver.retry_attempts:
-            LOG.debug("Datera 503 response, trying request again")
-            eventlet.sleep(driver.interval)
-            resp = driver._request(connection_string,
-                                   method,
-                                   payload,
-                                   header,
-                                   cert_data,
-                                   sensitive=sensitive)
-            if resp.ok:
-                return response.json()
-            elif resp.status_code != http_client.SERVICE_UNAVAILABLE:
-                driver._raise_response(resp)
-    else:
-        driver._raise_response(response)
-
-
 def _format_tenant(tenant):
-    if tenant == "all" or (tenant and '/root' in tenant):
-        return tenant
-    elif tenant and '/root' not in tenant:
-        return "".join(("/root/", tenant))
+    if tenant == "all" or (tenant and ('/root' in tenant or 'root' in tenant)):
+        return '/root'
+    elif tenant and ('/root' not in tenant and 'root' not in tenant):
+        return "/" + "/".join(('root', tenant)).strip('/')
     return tenant
 
 
-def _create_tenant(driver, tenant):
-    api_versions = driver._get_supported_api_versions()
-    api = api_versions[-1]
-    driver._issue_api_request('tenants', 'post', 'TENANT', api_version=api,
-                              body={'name': tenant}, conflict_ok=True)
-
-
-@_authenticated
-def _issue_api_request(driver, resource_url, method, project_id,
-                       api_version=None, body=None, sensitive=False,
-                       conflict_ok=False):
-    """All API requests to Datera cluster go through this method.
-
-    :param resource_url: the url of the resource
-    :param method: the request verb
-    :param body: a dict with options for the action_type
-    :param sensitive: Bool, whether request should be obscured from logs
-    :param conflict_ok: Bool, True to suppress ConflictError exceptions
-    during this request
-    :param api_version: The Datera api version for the request
-    :param tenant: The tenant header value for the request (only applicable
-    to 2.1 product versions and later)
-    :returns: a dict of the response from the Datera cluster
-    """
-    host = driver.configuration.san_ip
-    port = driver.configuration.datera_api_port
-    api_token = driver.datera_api_token
-
-    payload = json.dumps(body, ensure_ascii=False)
-    payload.encode('utf-8')
-
-    header = {'Content-Type': 'application/json; charset=utf-8'}
-    header.update(driver.HEADER_DATA)
-
-    protocol = 'http'
-    if driver.configuration.driver_use_ssl:
-        protocol = 'https'
-
-    if api_token:
-        header['Auth-Token'] = api_token
-
-    if project_id == 'LOGIN':
-        tenant = None
-    elif driver.tenant_id.lower() == "map":
-        if project_id in ('STATS', 'TENANT'):
-            tenant = None
-        elif not project_id:
-            raise ValueError("Need project_id for 'Map' tenant")
-        else:
-            tenant = _get_name(str(uuid.UUID(project_id)))
-            driver._create_tenant(tenant)
+def create_tenant(driver, project_id):
+    if driver.tenant_id.lower() == 'map':
+        name = _get_name(project_id)
+    elif driver.tenant_id:
+        name = driver.tenant_id.replace('root', '').strip('/')
     else:
-        tenant = driver.tenant_id
+        name = 'root'
+    if name:
+        try:
+            driver.api.tenants.create(name=name)
+        except dfs_sdk.exceptions.ApiConflictError:
+            LOG.debug("Tenant {} already exists".format(name))
+    return _format_tenant(name)
 
-    if tenant:
-        header['tenant'] = _format_tenant(tenant)
 
-    client_cert = driver.configuration.driver_client_cert
-    client_cert_key = driver.configuration.driver_client_cert_key
-    cert_data = None
+def get_tenant(driver, project_id):
+    if driver.tenant_id.lower() == 'map':
+        return _format_tenant(_get_name(project_id))
+    elif not driver.tenant_id:
+        return _format_tenant('root')
+    return _format_tenant(driver.tenant_id)
 
-    if client_cert:
-        protocol = 'https'
-        cert_data = (client_cert, client_cert_key)
 
-    connection_string = '%s://%s:%s/v%s/%s' % tuple(
-            eu.safe_decode(elem) for elem in (
-                protocol, host, port, api_version, resource_url))
+def cvol_to_ai(driver, resource):
+    tenant = get_tenant(driver, resource['project_id'])
+    try:
+        # api.tenants.get needs a non '/'-prefixed tenant id
+        driver.api.tenants.get(tenant.strip('/'))
+    except dfs_sdk.exceptions.ApiNotFoundError:
+        create_tenant(driver, resource['project_id'])
+    cid = resource.get('id', None)
+    if not cid:
+        raise ValueError('Unsure what id key to use for object', resource)
+    ais = driver.api.app_instances.list(
+        filter='match(name,.*{}.*)'.format(cid),
+        tenant=tenant)
+    if not ais:
+        raise exception.VolumeNotFound(volume_id=cid)
+    return ais[0]
 
-    request_id = uuid.uuid4()
 
-    if driver.do_profile:
-        t1 = time.time()
-    if not sensitive:
-        LOG.debug("\nDatera Trace ID: %(tid)s\n"
-                  "Datera Request ID: %(rid)s\n"
-                  "Datera Request URL: /v%(api)s/%(url)s\n"
-                  "Datera Request Method: %(method)s\n"
-                  "Datera Request Payload: %(payload)s\n"
-                  "Datera Request Headers: %(header)s\n",
-                  {'tid': driver.thread_local.trace_id,
-                   'rid': request_id,
-                   'api': api_version,
-                   'url': eu.safe_decode(resource_url),
-                   'method': method,
-                   'payload': eu.safe_decode(payload),
-                   'header': header})
-    response = driver._request(connection_string,
-                               method,
-                               payload,
-                               header,
-                               cert_data,
-                               sensitive=sensitive)
-
-    data = response.json()
-
-    timedelta = "Profiling disabled"
-    if driver.do_profile:
-        t2 = time.time()
-        timedelta = round(t2 - t1, 3)
-    if not sensitive:
-        LOG.debug("\nDatera Trace ID: %(tid)s\n"
-                  "Datera Response ID: %(rid)s\n"
-                  "Datera Response TimeDelta: %(delta)ss\n"
-                  "Datera Response URL: %(url)s\n"
-                  "Datera Response Payload: %(payload)s\n"
-                  "Datera Response Object: %(obj)s\n",
-                  {'tid': driver.thread_local.trace_id,
-                   'rid': request_id,
-                   'delta': timedelta,
-                   'url': eu.safe_decode(response.url),
-                   'payload': eu.safe_decode(payload),
-                   'obj': vars(response)})
-    if not response.ok:
-        driver._handle_bad_status(response,
-                                  connection_string,
-                                  method,
-                                  payload,
-                                  header,
-                                  cert_data,
-                                  conflict_ok=conflict_ok)
-
-    return data
+def cvol_to_dvol(driver, resource):
+    tenant = get_tenant(driver, resource['project_id'])
+    ai = cvol_to_ai(driver, resource)
+    si = ai.storage_instances.list(tenant=tenant)[0]
+    vol = si.volumes.list(tenant=tenant)[0]
+    return vol
 
 
 def register_driver(driver):
-    for func in [_get_supported_api_versions,
-                 _get_volume_type_obj,
+    for func in [_get_volume_type_obj,
                  _get_policies_for_resource,
                  _get_policies_for_volume_type,
                  _image_accessible,
-                 _request,
-                 _raise_response,
-                 _handle_bad_status,
-                 _create_tenant,
-                 _issue_api_request]:
+                 get_tenant,
+                 create_tenant,
+                 cvol_to_ai,
+                 cvol_to_dvol]:
         # PY27
 
         f = types.MethodType(func, driver)

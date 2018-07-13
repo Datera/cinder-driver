@@ -1,9 +1,8 @@
 #!/usr/bin/env python
 from __future__ import unicode_literals, division, print_function
 
-from scaffold import read_cinder_conf, getAPI
+from dfs_sdk import scaffold
 
-import argparse
 import contextlib
 import functools
 import io
@@ -18,7 +17,7 @@ import time
 import traceback
 import uuid
 
-from dfs_sdk.exceptions import ApiNotFoundError, ApiInvalidRequestError
+from dfs_sdk.exceptions import ApiNotFoundError
 
 VERBOSE = False
 
@@ -695,23 +694,15 @@ def set_conf_tenant(tenant):
 
 
 def main(args):
+    global VERBOSE
+    VERBOSE = args.verbose
     if args.tenant:
         set_conf_tenant(args.tenant)
         restart_cvol()
-    if (args.tenant and args.tenant.lower() != "map" and
-            "/root" not in args.tenant):
-        args.tenant = "/root/{}".format(args.tenant.strip("/"))
-    san_ip, san_login, san_password, tenant = read_cinder_conf()
-    if not tenant:
-        tenant = args.tenant
-    if tenant.lower().endswith("map"):
-        tenant = "OS-{}".format(getproject())
-    try:
-        api = getAPI(
-            san_ip, san_login, san_password, tenant=tenant, version="v2.2")
-    except ApiInvalidRequestError:
-        api = getAPI(
-            san_ip, san_login, san_password, tenant=tenant, version="v2.1")
+    api = scaffold.get_api()
+    config = scaffold.get_config()
+    print("Using Config")
+    scaffold.print_config()
     # Tests
     ptests = set(_TESTS)
     tests = set()
@@ -737,7 +728,7 @@ def main(args):
     print("----------")
     print("| REPORT |")
     print("----------")
-    print("Tenant:", tenant)
+    print("Tenant:", config['tenant'])
     print("PASSED:", len(_PASS))
     print("FAILED:", len(_FAIL))
     print("XFAILED:", len(_XFAIL))
@@ -745,10 +736,8 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-v", "--verbose", action="store_true")
+    parser = scaffold.get_argparser()
     parser.add_argument("-f", "--filter", default=[], action='append')
-    parser.add_argument("-t", "--tenant", default='')
     parser.add_argument("-l", "--list-tests", action="store_true")
     parser.add_argument("-x", "--stop-on-failure", action="store_true")
     args = parser.parse_args()

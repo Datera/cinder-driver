@@ -16,6 +16,7 @@
 import time
 import uuid
 
+import dfs_sdk
 from eventlet.green import threading
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -39,7 +40,7 @@ d_opts = [
                deprecated_for_removal=True,
                help='Datera API port.'),
     cfg.StrOpt('datera_api_version',
-               default='2',
+               default='2.2',
                deprecated_for_removal=True,
                help='Datera API version.'),
     cfg.StrOpt('datera_ldap_server',
@@ -151,8 +152,9 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         2018.5.1.0 - Bugfix for Map tenant auto-creation
         2018.5.18.0 - Bugfix for None tenant handling
         2018.6.7.0 - Bugfix for missing project_id during image clone
+        2018.7.13.0 - Massive update porting to use the Datera Python-SDK
     """
-    VERSION = '2018.6.7.0'
+    VERSION = '2018.7.13.0'
 
     CI_WIKI_NAME = "datera-ci"
 
@@ -171,7 +173,6 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
                                self.interval)
         self.driver_prefix = str(uuid.uuid4())[:4]
         self.datera_debug = self.configuration.datera_debug
-        self.datera_api_versions = []
 
         if self.datera_debug:
             utils.setup_tracing(['method'])
@@ -190,6 +191,8 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         self.image_cache = self.configuration.datera_enable_image_cache
         self.image_type = self.configuration.datera_image_cache_volume_type_id
         self.thread_local = threading.local()
+        self.apiv = None
+        self.api = None
 
         self.use_chap_auth = self.configuration.use_chap_auth
         self.chap_username = self.configuration.chap_username
@@ -198,7 +201,6 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         backend_name = self.configuration.safe_get(
             'volume_backend_name')
         self.backend_name = backend_name or 'Datera'
-
         datc.register_driver(self)
 
     def do_setup(self, context):
@@ -211,7 +213,22 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
             LOG.error(msg)
             raise exception.InvalidInput(msg)
 
-        self.login()
+        # Try each valid api version starting with the latest until we find
+        # one that works
+        for apiv in reversed(datc.API_VERSIONS):
+            api = dfs_sdk.get_api(self.configuration.san_ip,
+                                  self.username,
+                                  self.password,
+                                  'v{}'.format(apiv),
+                                  disable_log=True)
+            try:
+                system = api.system.get()
+                LOG.debug('Connected successfully to cluster: %s', system.name)
+                self.api = api
+                self.apiv = apiv
+                break
+            except Exception as e:
+                LOG.warning(e)
 
     # =================
 
@@ -219,7 +236,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Create Volume =
     # =================
 
-    @datc._api_lookup
+    @datc.lookup
     def create_volume(self, volume):
         """Create a logical volume."""
         pass
@@ -228,7 +245,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Extend Volume =
     # =================
 
-    @datc._api_lookup
+    @datc.lookup
     def extend_volume(self, volume, new_size):
         pass
 
@@ -238,7 +255,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Cloned Volume =
     # =================
 
-    @datc._api_lookup
+    @datc.lookup
     def create_cloned_volume(self, volume, src_vref):
         pass
 
@@ -246,7 +263,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Delete Volume =
     # =================
 
-    @datc._api_lookup
+    @datc.lookup
     def delete_volume(self, volume):
         pass
 
@@ -254,7 +271,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Ensure Export =
     # =================
 
-    @datc._api_lookup
+    @datc.lookup
     def ensure_export(self, context, volume, connector=None):
         """Gets the associated account, retrieves CHAP info and updates."""
 
@@ -262,7 +279,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Initialize Connection =
     # =========================
 
-    @datc._api_lookup
+    @datc.lookup
     def initialize_connection(self, volume, connector):
         pass
 
@@ -270,7 +287,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Create Export =
     # =================
 
-    @datc._api_lookup
+    @datc.lookup
     def create_export(self, context, volume, connector):
         pass
 
@@ -278,7 +295,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Detach Volume =
     # =================
 
-    @datc._api_lookup
+    @datc.lookup
     def detach_volume(self, context, volume, attachment=None):
         pass
 
@@ -286,7 +303,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Create Snapshot =
     # ===================
 
-    @datc._api_lookup
+    @datc.lookup
     def create_snapshot(self, snapshot):
         pass
 
@@ -294,7 +311,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Delete Snapshot =
     # ===================
 
-    @datc._api_lookup
+    @datc.lookup
     def delete_snapshot(self, snapshot):
         pass
 
@@ -302,7 +319,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Volume From Snapshot =
     # ========================
 
-    @datc._api_lookup
+    @datc.lookup
     def create_volume_from_snapshot(self, volume, snapshot):
         pass
 
@@ -310,7 +327,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Retype =
     # ==========
 
-    @datc._api_lookup
+    @datc.lookup
     def retype(self, ctxt, volume, new_type, diff, host):
         """Convert the volume to be of the new type.
 
@@ -329,7 +346,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Manage =
     # ==========
 
-    @datc._api_lookup
+    @datc.lookup
     def manage_existing(self, volume, existing_ref):
         """Manage an existing volume on the Datera backend
 
@@ -358,7 +375,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         """
         pass
 
-    @datc._api_lookup
+    @datc.lookup
     def manage_existing_snapshot(self, snapshot, existing_ref):
         """Brings an existing backend storage object under Cinder management.
 
@@ -392,7 +409,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Manage Get Size =
     # ===================
 
-    @datc._api_lookup
+    @datc.lookup
     def manage_existing_get_size(self, volume, existing_ref):
         """Get the size of an unmanaged volume on the Datera backend
 
@@ -412,7 +429,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         """
         pass
 
-    @datc._api_lookup
+    @datc.lookup
     def manage_existing_snapshot_get_size(self, snapshot, existing_ref):
         """Return size of snapshot to be managed by manage_existing.
 
@@ -429,7 +446,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Get Manageable Volume =
     # =========================
 
-    @datc._api_lookup
+    @datc.lookup
     def get_manageable_volumes(self, cinder_volumes, marker, limit, offset,
                                sort_keys, sort_dirs):
         """List volumes on the backend available for management by Cinder.
@@ -465,7 +482,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Get Manageable Snapshots =
     # ============================
 
-    @datc._api_lookup
+    @datc.lookup
     def get_manageable_snapshots(self, cinder_snapshots, marker, limit,
                                  offset, sort_keys, sort_dirs):
         """List snapshots on the backend available for management by Cinder.
@@ -504,7 +521,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Unmanage =
     # ============
 
-    @datc._api_lookup
+    @datc.lookup
     def unmanage(self, volume):
         """Unmanage a currently managed volume in Cinder
 
@@ -516,7 +533,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Fast Image Clone =
     # ====================
 
-    @datc._api_lookup
+    @datc.lookup
     def clone_image(self, context, volume, image_location, image_meta,
                     image_service):
         """Clone an existing image volume."""
@@ -526,7 +543,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Volume Migration =
     # ====================
 
-    @datc._api_lookup
+    @datc.lookup
     def update_migrated_volume(self, context, volume, new_volume,
                                volume_status):
         """Return model update for migrated volume.
@@ -547,7 +564,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Volume Stats =
     # ================
 
-    @datc._api_lookup
+    @datc.lookup
     def get_volume_stats(self, refresh=False):
         """Get volume stats.
 
@@ -562,7 +579,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     # = Login =
     # =========
 
-    @datc._api_lookup
+    @datc.lookup
     def login(self):
         pass
 
