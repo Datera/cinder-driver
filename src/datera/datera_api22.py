@@ -264,22 +264,26 @@ class DateraApi(object):
         # Handle adding initiator to product if necessary
         # Then add initiator to ACL
         if connector and connector.get('initiator'):
-            initiator_name = "OpenStack_{}_{}".format(
-                self.driver_prefix, str(uuid.uuid4())[:4])
-            # TODO(_alastor_): actually check for existing initiator
-            found = False
+            initiator_name = "OpenStack-{}".format(str(uuid.uuid4())[:8])
             initiator = connector['initiator']
-            initiator_path = "/initiators/{}".format(initiator)
-            if not found:
+            dinit = None
+            try:
+                # We want to make sure the initiator is created under the
+                # current tenant rather than using the /root one
+                dinit = self.api.initiators.get(initiator, tenant=tenant)
+                if dinit.tenant != tenant:
+                    raise dexceptions.ApiNotFoundError()
+            except dexceptions.ApiNotFoundError:
                 # TODO(_alastor_): Take out the 'force' flag when we fix
                 # DAT-15931
                 data = {'id': initiator, 'name': initiator_name, 'force': True}
                 # Try and create the initiator
                 # If we get a conflict, ignore it
                 try:
-                    self.api.initiators.create(tenant=tenant, **data)
+                    dinit = self.api.initiators.create(tenant=tenant, **data)
                 except dexceptions.ApiConflictError:
                     pass
+            initiator_path = dinit['path']
             # Create ACL with initiator group as reference for each
             # storage_instance in app_instance
             # TODO(_alastor_): We need to avoid changing the ACLs if the
