@@ -153,8 +153,10 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         2018.5.18.0 - Bugfix for None tenant handling
         2018.6.7.0 - Bugfix for missing project_id during image clone
         2018.7.13.0 - Massive update porting to use the Datera Python-SDK
+        2018.7.20.0 - Driver now includes display_name in created backend
+                      app_instances.
     """
-    VERSION = '2018.7.13.0'
+    VERSION = '2018.7.20.0'
 
     CI_WIKI_NAME = "datera-ci"
 

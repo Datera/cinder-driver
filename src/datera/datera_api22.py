@@ -60,12 +60,14 @@ class DateraApi(object):
         placement = policies['placement_mode']
         ip_pool = policies['ip_pool']
 
+        name = datc.get_name(volume)
+
         if template:
             app_params = (
                 {
                     'create_mode': 'openstack',
                     # 'uuid': str(volume['id']),
-                    'name': datc._get_name(volume['id']),
+                    'name': name,
                     'app_template': {'path': '/app_templates/{}'.format(
                         template)}
                 })
@@ -76,7 +78,7 @@ class DateraApi(object):
                 {
                     'create_mode': 'openstack',
                     'uuid': str(volume['id']),
-                    'name': datc._get_name(volume['id']),
+                    'name': name,
                     'access_control_mode': 'deny_all',
                     'storage_instances': [
                         {
@@ -138,7 +140,7 @@ class DateraApi(object):
         src = sdvol.path
         data = {
             'create_mode': 'openstack',
-            'name': datc._get_name(volume['id']),
+            'name': datc.get_name(volume),
             'uuid': str(volume['id']),
             'clone_volume_src': {'path': src},
         }
@@ -162,7 +164,7 @@ class DateraApi(object):
         except exception.NotFound:
             msg = ("Tried to delete volume %s, but it was not found in the "
                    "Datera cluster. Continuing with delete.")
-            LOG.info(msg, datc._get_name(volume['id']))
+            LOG.info(msg, datc.get_name(volume))
 
     # =================
     # = Ensure Export =
@@ -272,7 +274,10 @@ class DateraApi(object):
                 # current tenant rather than using the /root one
                 dinit = self.api.initiators.get(initiator, tenant=tenant)
                 if dinit.tenant != tenant:
-                    raise dexceptions.ApiNotFoundError()
+                    raise dexceptions.ApiNotFoundError(
+                        "Initiator {} was not found under tenant {} "
+                        "[{} != {}]".format(
+                            initiator, tenant, dinit.tenant, tenant))
             except dexceptions.ApiNotFoundError:
                 # TODO(_alastor_): Take out the 'force' flag when we fix
                 # DAT-15931
@@ -391,8 +396,8 @@ class DateraApi(object):
             msg = ("Tried to delete snapshot %s, but parent volume %s was "
                    "not found in Datera cluster. Continuing with delete.")
             LOG.info(msg,
-                     datc._get_name(snapshot['id']),
-                     datc._get_name(snapshot['volume_id']))
+                     datc.get_name(snapshot),
+                     datc.get_name({'id': snapshot['volume_id']}))
             return
 
         try:
@@ -405,7 +410,7 @@ class DateraApi(object):
         except exception.NotFound:
             msg = ("Tried to delete snapshot %s, but was not found in "
                    "Datera cluster. Continuing with delete.")
-            LOG.info(msg, datc._get_name(snapshot['id']))
+            LOG.info(msg, datc.get_name(snapshot))
 
     # ========================
     # = Volume From Snapshot =
@@ -437,7 +442,7 @@ class DateraApi(object):
             {
                 'create_mode': 'openstack',
                 'uuid': str(volume['id']),
-                'name': datc._get_name(volume['id']),
+                'name': datc.get_name(volume),
                 'clone_snapshot_src': {'path': src},
             })
 
@@ -510,13 +515,13 @@ class DateraApi(object):
         app_inst_name, _, _, _ = datc._parse_vol_ref(existing_ref)
         LOG.debug("Managing existing Datera volume %s  "
                   "Changing name to %s",
-                  datc._get_name(volume['id']), existing_ref)
+                  datc.get_name(volume), existing_ref)
         # Rename AppInstance
         dummy_vol = {'id': app_inst_name,
                      'project_id': volume['project_id']}
         ai = self.cvol_to_ai(dummy_vol)
         tenant = self.get_tenant(volume['project_id'])
-        data = {'name': datc._get_name(volume['id'])}
+        data = {'name': datc.get_name(volume)}
         ai.set(tenant=tenant, **data)
         self._add_vol_meta_2_2(volume)
 
@@ -626,7 +631,7 @@ class DateraApi(object):
         existing_ref = existing_ref['source-name']
         datc._check_snap_ref(existing_ref)
         LOG.debug("Managing existing Datera volume snapshot %s for volume %s",
-                  existing_ref, datc._get_name(snapshot['volume_id']))
+                  existing_ref, datc.get_name({'id': snapshot['volume_id']}))
         return {'provider_location': existing_ref}
 
     def _manage_existing_snapshot_get_size_2_2(self, snapshot, existing_ref):
@@ -799,13 +804,13 @@ class DateraApi(object):
             self._create_volume_2_2(vol)
             with self._connect_vol(context, vol) as device:
                 LOG.debug("Moving image %s to volume %s",
-                          image_meta['id'], datc._get_name(vol['id']))
+                          image_meta['id'], datc.get_name(vol))
                 image_utils.convert_image(tmp_image,
                                           device,
                                           'raw',
                                           run_as_root=True)
                 LOG.debug("Finished moving image %s to volume %s",
-                          image_meta['id'], datc._get_name(vol['id']))
+                          image_meta['id'], datc.get_name(vol))
                 data = image_utils.qemu_img_info(device, run_as_root=True)
                 if data.file_format != 'raw':
                     raise exception.ImageUnacceptable(
@@ -1036,7 +1041,7 @@ class DateraApi(object):
            can find it correctly"""
         ai = self.cvol_to_ai(new_volume)
         tenant = self.get_tenant(new_volume['project_id'])
-        data = {'name': datc._get_name(volume['id'])}
+        data = {'name': datc.get_name(volume)}
         ai.set(tenant=tenant, **data)
         return {'_name_id': None}
 

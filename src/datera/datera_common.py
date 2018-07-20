@@ -33,8 +33,8 @@ from cinder.volume import volume_types
 from glanceclient import exc as glance_exc
 
 LOG = logging.getLogger(__name__)
-OS_PREFIX = "OS-"
-UNMANAGE_PREFIX = "UNMANAGED-"
+OS_PREFIX = "OS"
+UNMANAGE_PREFIX = "UNMANAGED"
 
 # Taken from this SO post :
 # http://stackoverflow.com/a/18516125
@@ -65,12 +65,21 @@ M_MANAGED = 'cinder_managed'
 M_KEYS = [M_TYPE, M_CALL, M_CLONE, M_MANAGED]
 
 
-def _get_name(name):
-    return "".join((OS_PREFIX, name))
+def get_name(resource):
+    dn = resource.get('display_name')
+    cid = resource.get('id')
+    if dn:
+        # Check to ensure the name is short enough to fit.  Prioritize
+        # the prefix and Cinder ID
+        nl = len(OS_PREFIX) + len(dn) + len(cid) + 2
+        if nl >= 64:
+            dn = dn[:-(nl - 63)]
+        return "-".join((OS_PREFIX, dn, cid))
+    return "-".join((OS_PREFIX, cid))
 
 
-def _get_unmanaged(name):
-    return "".join((UNMANAGE_PREFIX, name))
+def get_unmanaged(name):
+    return "-".join((UNMANAGE_PREFIX, name))
 
 
 def lookup(func):
@@ -254,7 +263,7 @@ def _format_tenant(tenant):
 
 def create_tenant(driver, project_id):
     if driver.tenant_id.lower() == 'map':
-        name = _get_name(project_id)
+        name = get_name({'id': project_id})
     elif driver.tenant_id:
         name = driver.tenant_id.replace('root', '').strip('/')
     else:
@@ -269,7 +278,7 @@ def create_tenant(driver, project_id):
 
 def get_tenant(driver, project_id):
     if driver.tenant_id.lower() == 'map':
-        return _format_tenant(_get_name(project_id))
+        return _format_tenant(get_name({'id': project_id}))
     elif not driver.tenant_id:
         return _format_tenant('root')
     return _format_tenant(driver.tenant_id)
