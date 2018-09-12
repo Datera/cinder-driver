@@ -6,10 +6,25 @@ Datera Cinder Repository
 Datera Cinder Volume Driver Installation
 ----------------------------------------
 
-1. Clone Repository ``git clone http://github.com/Datera/cinder-driver``
-2. Copy Driver ``cd cinder-driver && cp src/datera/*.py /usr/local/lib/pythonX.X/dist-packages/cinder/volume/drivers/datera``
-3. Install Python-SDK ``sudo pip install git+http://github.com/Datera/python-sdk``
-4. Restart Cinder ``service cinder-volume restart``
+.. code-block::
+
+    1. Clone Repository ``git clone http://github.com/Datera/cinder-driver``
+    2. Copy Driver ``cd cinder-driver && cp src/datera/*.py /usr/local/lib/pythonX.X/dist-packages/cinder/volume/drivers/datera``
+    3. Install Python-SDK ``sudo pip install git+http://github.com/Datera/python-sdk``
+    4. Modify ``/etc/cinder/cinder.conf``
+      * Under [DEFAULT]
+        * ``default_volume_type = datera``
+        * ``enabled_backends = datera``
+        * ``debug = True``
+      * Under [datera]
+        * ``volume_driver = cinder.volume.drivers.datera.datera_iscsi.DateraDriver``
+        * ``san_ip = <datera_mgmt_ip>``
+        * ``san_login = <datera_username>``
+        * ``san_password = <datera_password>``
+        * ``volume_backend_name = datera``
+        * ``tenant = <datera_tenant>``
+    4. Restart Cinder ``service cinder-volume restart``
+
 
 ------------------------------------
 Datera Volume Driver Version History
