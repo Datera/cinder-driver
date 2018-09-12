@@ -76,7 +76,7 @@ Show Volume Attach/Detach (useful for mapping volume to instance)
     $ ./sreq.py /your/cinder-volume/log/location.log --attach-detach
 """
 DREQ = re.compile(r"""^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*?
-Datera Trace ID: (?P<trace>\w+-\w+-\w+-\w+-\w+)
+Datera Trace ID: (?P<trace>(\w+-\w+-\w+-\w+-\w+)|None)
 Datera Request ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
 Datera Request URL: (?P<url>.*?)
 Datera Request Method: (?P<method>.*?)
@@ -84,7 +84,7 @@ Datera Request Payload: (?P<payload>.*?)
 Datera Request Headers: (?P<headers>.*?\})""")
 
 DRES = re.compile(r"""^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*?
-Datera Trace ID: (?P<trace>\w+-\w+-\w+-\w+-\w+)
+Datera Trace ID: (?P<trace>(\w+-\w+-\w+-\w+-\w+)|None)
 Datera Response ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
 Datera Response TimeDelta: (?P<delta>\d+\.\d\d?\d?)s
 Datera Response URL: (?P<url>.*?)
