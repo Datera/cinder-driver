@@ -26,6 +26,19 @@ Datera Cinder Volume Driver Installation
     4. Restart Cinder ``service cinder-volume restart``
 
 
+If you get an error like:
+
+.. code-block::
+
+    ImportError: No module named dfs_sdk
+
+Then you can install the Python-SDK manually via
+
+.. code-block::
+
+    $ pip install git+http://github.com/Datera/python-sdk
+
+
 ------------------------------------
 Datera Volume Driver Version History
 ------------------------------------
