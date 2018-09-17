@@ -1,0 +1,7 @@
+eventlet
+oslo_config
+oslo_log
+requests==2.18.4
+six==1.11.0
+urllib3
+git+http://github.com/Datera/python-sdk
