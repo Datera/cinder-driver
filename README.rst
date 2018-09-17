@@ -49,6 +49,8 @@ Datera Volume Driver Version History
 
    * - Version
      - Changes
+   * - 2018.9.17.0
+     - Readme and requirements.txt changes
    * - 2018.7.13.0
      - Massive update porting to use the Datera Python-SDK
    * - 2018.6.7.0

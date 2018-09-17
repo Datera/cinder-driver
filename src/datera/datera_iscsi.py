@@ -155,8 +155,9 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         2018.7.13.0 - Massive update porting to use the Datera Python-SDK
         2018.7.20.0 - Driver now includes display_name in created backend
                       app_instances.
+        2018.9.17.0 - Requirements and doc changes
     """
-    VERSION = '2018.7.20.0'
+    VERSION = '2018.9.17.0'
 
     CI_WIKI_NAME = "datera-ci"
 
