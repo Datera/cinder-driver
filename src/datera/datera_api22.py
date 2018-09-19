@@ -617,8 +617,8 @@ class DateraApi(object):
 
     def _unmanage_2_2(self, volume):
         LOG.debug("Unmanaging Cinder volume %s.  Changing name to %s",
-                  volume['id'], datc._get_unmanaged(volume['id']))
-        data = {'name': datc._get_unmanaged(volume['id'])}
+                  volume['id'], datc.get_unmanaged(volume['id']))
+        data = {'name': datc.get_unmanaged(volume['id'])}
         ai = self.cvol_to_ai(volume)
         tenant = self.get_tenant(volume['project_id'])
         ai.set(tenant=tenant, **data)
