@@ -26,6 +26,7 @@ O_STATUS_RE = re.compile("\| status.*\| (.*) \|")
 O_SIZE_RE = re.compile("\| size.*\| (.*) \|")
 UUID4_RE = re.compile(
     "[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab][a-f0-9]{3}-?[a-f0-9]{12}")
+OS_PREFIX = "OS"
 
 WORDS = ["koala", "panda", "teddy", "brown", "grizzly", "polar", "cinnamon",
          "atlas", "blue", "gobi", "sloth", "sun", "ursid", "kodiak", "gummy",
@@ -56,10 +57,10 @@ def testcase(func):
             print("ok")
         except XFailError as e:
             print("XFAILED: ", e)
-            _XFAIL.append(name)
+            _XFAIL.append((name, e))
             print(traceback.print_exc())
         except Exception as e:
-            _FAIL.append(name)
+            _FAIL.append((name, e))
             print("FAILED: ", e)
             print(traceback.print_exc())
 
@@ -101,22 +102,22 @@ def exe(cmd, stdout=None, shell=False):
     vprint(subprocess.check_call(cmd, stdout=stdout, shell=shell))
 
 
-def getai(api, volid, prefix="OS-"):
-    ai = api.app_instances.get(prefix+volid)
+def getai(api, volid):
+    ai = api.app_instances.list(filter='match(name,.*{}.*)'.format(volid))[0]
     vprint(ai)
     return ai
 
 
-def getvol(api, volid, prefix="OS-"):
-    ai = api.app_instances.get(prefix+volid)
+def getvol(api, volid):
+    ai = getai(api, volid)
     si = ai.storage_instances.list()[0]
     vol = si.volumes.list()[0]
     vprint(vol)
     return vol
 
 
-def getqos(api, volid, prefix="OS-"):
-    vol = getvol(api, volid, prefix=prefix)
+def getqos(api, volid):
+    vol = getvol(api, volid)
     return vol["performance_policy"]
 
 
@@ -233,7 +234,7 @@ def test_creation(api):
     volid = create_volume(name, 5)
     time.sleep(2)
     try:
-        api.app_instances.get("OS-{}".format(volid))
+        getai(api, volid)
     except ApiNotFoundError as e:
         print(e)
         print("Failed to create volume {}".format(name))
@@ -359,7 +360,8 @@ def test_unmanage(api):
     time.sleep(2)
     try:
         vprint("Checking for AppInstance:", "UNMANAGED-"+volid)
-        ai = getai(api, volid, prefix="UNMANAGED-")
+        ai = getai(api, volid)
+        vassert(ai.name, "-".join(("UNMANAGED", volid)))
         ai.delete()
     except ApiNotFoundError as e:
         print("Unmanaged volume {} not found".format("UNMANAGED-"+volid))
@@ -373,7 +375,8 @@ def test_snapshot_manage(api):
     size = random.randint(1, 10)
     volid = create_volume(name, size)
     time.sleep(2)
-    snap = create_unmanaged_snapshot(api, "OS-{}".format(volid))
+    ai = getai(api, volid)
+    snap = create_unmanaged_snapshot(api, ai.name)
     result = exe("cinder snapshot-manage {volume} {snap}".format(
         volume=volid, snap=snap))
     snapid = objid_from_output(result)
@@ -393,7 +396,8 @@ def test_snapshot_manage_then_clone(api):
     size = random.randint(1, 10)
     volid = create_volume(name, size)
     time.sleep(2)
-    snap = create_unmanaged_snapshot(api, "OS-{}".format(volid))
+    ai = getai(api, volid)
+    snap = create_unmanaged_snapshot(api, ai.name)
     result = exe("cinder snapshot-manage {volume} {snap}".format(
         volume=volid, snap=snap))
     snapid = objid_from_output(result)
@@ -731,7 +735,13 @@ def main(args):
     print("Tenant:", config['tenant'])
     print("PASSED:", len(_PASS))
     print("FAILED:", len(_FAIL))
+    for name, e in _FAIL:
+        print(name)
+        print(e)
     print("XFAILED:", len(_XFAIL))
+    for name, e in _XFAIL:
+        print(name)
+        print(e)
     print("SKIPPED:", len(_SKIP))
 
 
