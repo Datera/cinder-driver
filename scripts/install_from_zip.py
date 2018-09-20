@@ -238,8 +238,8 @@ def main(args):
 
     if not args.just_conf:
         src = None
-        print("Unarchiving: ", args.cinder_driver_archive)
-        for name in unarchive(args.cinder_driver_archive):
+        print("Unarchiving: ", args.c_archive)
+        for name in unarchive(args.c_archive):
             if name.endswith('/src/'):
                 src = os.path.join(name, 'datera')
 
@@ -265,8 +265,8 @@ def main(args):
 
         print("Copying {} to {}".format(src, dat_dir))
         shutil.copytree(src, dat_dir)
-        print("Unarchiving: ", args.python_sdk_archive)
-        unarchive(args.python_sdk_archive)
+        print("Unarchiving: ", args.p_archive)
+        unarchive(args.p_archive)
         psdk = None
         for name in unarchive(args.cinder_driver_archive):
             if name.endswith('/src/'):
@@ -280,10 +280,10 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('cinder-driver-archive',
+    parser.add_argument('c-archive',
                         help='Tarball or zipfile archive of the Datera '
                              'cinder-driver github repository')
-    parser.add_argument('python-sdk-archive',
+    parser.add_argument('p-archive',
                         help='Tarball or zipfile archive of the Datera python-'
                              'sdk')
     parser.add_argument('udc_file',
