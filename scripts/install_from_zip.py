@@ -266,12 +266,11 @@ def main(args):
         print("Copying {} to {}".format(src, dat_dir))
         shutil.copytree(src, dat_dir)
         print("Unarchiving: ", args.p_archive)
-        unarchive(args.p_archive)
         psdk = None
-        for name in unarchive(args.c_archive):
+        for name in unarchive(args.p_archive):
             if name.endswith('/src/'):
-                psdk = os.path.join(os.path.split(name)[:-1])
-        cmd = ["sudo", "pip", "install", psdk]
+                psdk = "/".join(name.rstrip("/").split("/")[:-1])
+        cmd = ["sudo", "pip", "install", "-e", psdk]
         print("Running command: ", " ".join(cmd))
         print(subprocess.check_output(cmd))
 
