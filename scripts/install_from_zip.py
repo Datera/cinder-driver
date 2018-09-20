@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tarfile
 import zipfile
@@ -235,9 +236,10 @@ def main(args):
         conf = json.load(f)
         print(conf)
 
-    src = None
     if not args.just_conf:
-        for name in unarchive(args.archive):
+        src = None
+        print("Unarchiving: ", args.cinder_driver_archive)
+        for name in unarchive(args.cinder_driver_archive):
             if name.endswith('/src/'):
                 src = os.path.join(name, 'datera')
 
@@ -263,15 +265,27 @@ def main(args):
 
         print("Copying {} to {}".format(src, dat_dir))
         shutil.copytree(src, dat_dir)
+        print("Unarchiving: ", args.python_sdk_archive)
+        unarchive(args.python_sdk_archive)
+        psdk = None
+        for name in unarchive(args.cinder_driver_archive):
+            if name.endswith('/src/'):
+                psdk = os.path.join(os.path.split(name)[:-1])
+        cmd = ["sudo", "pip", "install", psdk]
+        print("Running command: ", " ".join(cmd))
+        print(subprocess.check_output(cmd))
 
     cinder_volume(conf, args.conf, args.inplace)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('archive',
+    parser.add_argument('cinder-driver-archive',
                         help='Tarball or zipfile archive of the Datera '
                              'cinder-driver github repository')
+    parser.add_argument('python-sdk-archive',
+                        help='Tarball or zipfile archive of the Datera python-'
+                             'sdk')
     parser.add_argument('udc_file',
                         help='Datera Universal Config File')
     parser.add_argument('--dest', default=LOC,
