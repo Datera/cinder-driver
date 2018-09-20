@@ -268,7 +268,7 @@ def main(args):
         print("Unarchiving: ", args.p_archive)
         unarchive(args.p_archive)
         psdk = None
-        for name in unarchive(args.cinder_driver_archive):
+        for name in unarchive(args.c_archive):
             if name.endswith('/src/'):
                 psdk = os.path.join(os.path.split(name)[:-1])
         cmd = ["sudo", "pip", "install", psdk]
@@ -280,10 +280,10 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('c-archive',
+    parser.add_argument('c_archive',
                         help='Tarball or zipfile archive of the Datera '
                              'cinder-driver github repository')
-    parser.add_argument('p-archive',
+    parser.add_argument('p_archive',
                         help='Tarball or zipfile archive of the Datera python-'
                              'sdk')
     parser.add_argument('udc_file',
