@@ -55,3 +55,5 @@
               each request along with the request.  This functionality
               existed before the Python-SDK revamp, so this change adds
               the functionality back in.
+2018.10.8.1 - Adding thread_local to Python-SDK constructor call.  This
+              preserves trace_id in the logs
