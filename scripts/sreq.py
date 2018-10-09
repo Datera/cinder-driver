@@ -22,8 +22,9 @@ VERSION HISTORY:
     1.2.0 -- Added ability to leave off field in --filter to check all fields
     1.2.1 -- Moved some stuff out into sreq_common
     1.2.2 -- Compatibility updates
+    1.2.3 -- Journalctl timestamp compatibility update
 """
-VERSION = "v1.2.2"
+VERSION = "v1.2.3"
 
 USAGE = """
 
@@ -89,12 +90,12 @@ Datera Response ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
 Datera Response TimeDelta: (?P<delta>\d+\.\d\d?\d?)s
 Datera Response URL: (?P<url>.*?)
 Datera Response Payload: (?P<payload>.*?)
-Datera Response Object.*""")
+""")
 
 # Journalctl matchers
 # ISO8601 2018-01-08T20:04:47+0000
-DREQ_J = re.compile(r"""^(?P<time>\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+\d{4}).*
-.*Datera Trace ID: (?P<trace>\w+-\w+-\w+-\w+-\w+)
+DREQ_J = re.compile(r"""^(?P<time>(\w+ \d\d \d\d:\d\d:\d\d)|(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+\d{4})).*
+.*Datera Trace ID: (?P<trace>\w+-\w+-\w+-\w+-\w+|None)
 .*Datera Request ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
 .*Datera Request URL: (?P<url>.*?)
 .*Datera Request Method: (?P<method>.*?)
@@ -102,13 +103,13 @@ DREQ_J = re.compile(r"""^(?P<time>\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+\d{4}).*
 .*Datera Request Headers: (?P<headers>.*?\})""")
 
 # ISO8601 2018-01-08T20:04:47+0000
-DRES_J = re.compile(r"""^(?P<time>\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+\d{4}).*
-.*Datera Trace ID: (?P<trace>\w+-\w+-\w+-\w+-\w+)
+DRES_J = re.compile(r"""^(?P<time>(\w+ \d\d \d\d:\d\d:\d\d)|(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+\d{4})).*
+.*Datera Trace ID: (?P<trace>\w+-\w+-\w+-\w+-\w+|None)
 .*Datera Response ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
 .*Datera Response TimeDelta: (?P<delta>\d+\.\d\d?\d?)s
 .*Datera Response URL: (?P<url>.*?)
-.*Datera Response Payload: (?P<payload>.*?)
-.*Datera Response Object.*""")
+.*Datera Response Payload: (?P<payload>.*)
+""")
 #######
 
 ATTACH = re.compile(r"^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*"
