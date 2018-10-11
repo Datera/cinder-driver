@@ -101,7 +101,7 @@ CONF.register_opts(d_opts)
 @six.add_metaclass(utils.TraceWrapperWithABCMetaclass)
 class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
 
-    VERSION = '2018.10.8.1'
+    VERSION = '2018.10.8.2'
 
     CI_WIKI_NAME = "datera-ci"
 
@@ -169,7 +169,8 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
                                   'v{}'.format(apiv),
                                   disable_log=True,
                                   extra_headers=self.HEADER_DATA,
-                                  thread_local=self.thread_local)
+                                  thread_local=self.thread_local,
+                                  ldap_server=self.ldap)
             try:
                 system = api.system.get()
                 LOG.debug('Connected successfully to cluster: %s', system.name)
