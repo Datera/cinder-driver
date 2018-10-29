@@ -1,4 +1,3 @@
 arrow==0.12.0
-requests==2.18.4
 six==1.11.0
 git+http://github.com/Datera/python-sdk

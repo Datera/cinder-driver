@@ -57,3 +57,7 @@
               the functionality back in.
 2018.10.8.1 - Adding thread_local to Python-SDK constructor call.  This
               preserves trace_id in the logs
+2018.10.30.0 - Adding template_override support.  Added
+               datera_disable_template_override cfgOpt to disable this feature.
+               Updated required requests version to >=2.20.0 because of a
+               security vulnerability in <=2.19.X.

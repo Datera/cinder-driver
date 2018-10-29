@@ -71,6 +71,13 @@ class DateraApi(object):
                     'app_template': {'path': '/app_templates/{}'.format(
                         template)}
                 })
+            if self._support_template_override_2_2():
+                app_params['template_override'] = {
+                    'storage_instances': {
+                        storage_name: {
+                            'volumes': {
+                                volume_name: {
+                                    'size': volume['size']}}}}}
 
         else:
 
@@ -118,9 +125,10 @@ class DateraApi(object):
             return
         policies = self._get_policies_for_resource(volume)
         template = policies['template']
-        if template:
-            LOG.warning("Volume size not extended due to template binding:"
-                        " volume: %(volume)s, template: %(template)s",
+        if template and not self._support_template_override_2_2():
+            LOG.warning("Volume size not extended due to template binding.  "
+                        "Template override is supported in product versions "
+                        "3.3.X+: volume: %(volume)s, template: %(template)s",
                         {'volume': volume, 'template': template})
             return
 
@@ -1070,3 +1078,16 @@ class DateraApi(object):
         ai = self.cvol_to_ai(volume)
         ai.metadata.set(tenant=self.get_tenant(volume['project_id']),
                         **metadata)
+
+    def _support_template_override_2_2(self):
+        # Getting the whole api schema is expensive
+        # so we only want to do this once per driver
+        # instantiation.
+        if not self.template_override:
+            return False
+        if hasattr(self, '_to_22'):
+            return self._to_22
+        api = self.api.api.get()
+        prop = api['/app_instances']['create']['bodyParamSchema']['properties']
+        self._to_22 = 'template_override' in prop
+        return self._to_22

@@ -80,6 +80,10 @@ d_opts = [
                 default=False,
                 help="Set to True to disable sending additional metadata to "
                      "the Datera backend"),
+    cfg.BoolOpt('datera_disable_template_override',
+                default=False,
+                help="Set to True to disable automatic template override of "
+                     "the size attribute when creating from a template"),
     cfg.DictOpt('datera_volume_type_defaults',
                 default={},
                 help="Settings here will be used as volume-type defaults if "
@@ -101,7 +105,7 @@ CONF.register_opts(d_opts)
 @six.add_metaclass(utils.TraceWrapperWithABCMetaclass)
 class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
 
-    VERSION = '2018.10.8.2'
+    VERSION = '2018.10.8.3'
 
     CI_WIKI_NAME = "datera-ci"
 
@@ -129,6 +133,8 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         self.defaults = self.configuration.datera_volume_type_defaults
         if self.tenant_id and self.tenant_id.lower() == 'none':
             self.tenant_id = None
+        self.template_override = (
+            not self.configuration.datera_disable_template_override)
         self.api_check = time.time()
         self.api_cache = []
         self.api_timeout = 0
