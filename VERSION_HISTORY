@@ -60,4 +60,5 @@
 2018.10.30.0 - Adding template_override support.  Added
                datera_disable_template_override cfgOpt to disable this feature.
                Updated required requests version to >=2.20.0 because of a
-               security vulnerability in <=2.19.X.
+               security vulnerability in <=2.19.X.  Added support for
+               filter_function and goodness_function.

@@ -969,6 +969,8 @@ class DateraApi(object):
                         int(results.available_capacity) / units.Gi),
                     'reserved_percentage': 0,
                     'QoS_support': True,
+                    'filter_function': self.filterf,
+                    'goodness_function': self.goodnessf
                 }
 
                 self.cluster_stats = stats
