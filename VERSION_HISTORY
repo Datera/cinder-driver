@@ -62,3 +62,4 @@
                Updated required requests version to >=2.20.0 because of a
                security vulnerability in <=2.19.X.  Added support for
                filter_function and goodness_function.
+2018.11.1.0 - Adding flash and hybrid capacity info to get_volume_stats

@@ -967,8 +967,19 @@ class DateraApi(object):
                         int(results.total_capacity) / units.Gi),
                     'free_capacity_gb': (
                         int(results.available_capacity) / units.Gi),
+                    'total_flash_capacity_gb': (
+                        int(results.all_flash_total_capacity) / units.Gi),
+                    'total_hybrid_capacity_gb': (
+                        int(results.hybrid_total_capacity) / units.Gi),
+                    'free_flash_capacity_gb': (
+                        int(results.all_flash_available_capacity) / units.Gi),
+                    'free_hybrid_capacity_gb': (
+                        int(results.hybrid_available_capacity) / units.Gi),
                     'reserved_percentage': 0,
                     'QoS_support': True,
+                    'compression': results.get('compression_enabled', False),
+                    'compression_ratio': results.get('compression_ratio', '0'),
+                    'l3_enabled': results.get('l3_enabled', False),
                     'filter_function': self.filterf,
                     'goodness_function': self.goodnessf
                 }
