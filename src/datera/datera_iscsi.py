@@ -105,7 +105,7 @@ CONF.register_opts(d_opts)
 @six.add_metaclass(utils.TraceWrapperWithABCMetaclass)
 class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
 
-    VERSION = '2018.11.1.0'
+    VERSION = '2018.11.8.0'
 
     CI_WIKI_NAME = "datera-ci"
 
@@ -171,15 +171,15 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         # Try each valid api version starting with the latest until we find
         # one that works
         for apiv in reversed(datc.API_VERSIONS):
-            api = dfs_sdk.get_api(self.configuration.san_ip,
-                                  self.username,
-                                  self.password,
-                                  'v{}'.format(apiv),
-                                  disable_log=True,
-                                  extra_headers=self.HEADER_DATA,
-                                  thread_local=self.thread_local,
-                                  ldap_server=self.ldap)
             try:
+                api = dfs_sdk.get_api(self.configuration.san_ip,
+                                      self.username,
+                                      self.password,
+                                      'v{}'.format(apiv),
+                                      disable_log=True,
+                                      extra_headers=self.HEADER_DATA,
+                                      thread_local=self.thread_local,
+                                      ldap_server=self.ldap)
                 system = api.system.get()
                 LOG.debug('Connected successfully to cluster: %s', system.name)
                 self.api = api
