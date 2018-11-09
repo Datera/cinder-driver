@@ -269,23 +269,24 @@ class DateraApi(object):
             initiator_name = "OpenStack-{}".format(str(uuid.uuid4())[:8])
             initiator = connector['initiator']
             dinit = None
+            # This is not possible to check in the 2.7 version of the product
+            # try:
+            #     # We want to make sure the initiator is created under the
+            #     # current tenant rather than using the /root one
+            #     dinit = self.api.initiators.get(initiator, tenant=tenant)
+            #     if dinit.tenant != tenant:
+            #         raise dexceptions.ApiNotFoundError(
+            #             "Initiator {} was not found under tenant {} "
+            #             "[{} != {}]".format(
+            #                 initiator, tenant, dinit.tenant, tenant))
+            # except dexceptions.ApiNotFoundError:
+            data = {'id': initiator, 'name': initiator_name}
+            # Try and create the initiator
+            # If we get a conflict, ignore it
             try:
-                # We want to make sure the initiator is created under the
-                # current tenant rather than using the /root one
+                dinit = self.api.initiators.create(tenant=tenant, **data)
+            except dexceptions.ApiConflictError:
                 dinit = self.api.initiators.get(initiator, tenant=tenant)
-                if dinit.tenant != tenant:
-                    raise dexceptions.ApiNotFoundError(
-                        "Initiator {} was not found under tenant {} "
-                        "[{} != {}]".format(
-                            initiator, tenant, dinit.tenant, tenant))
-            except dexceptions.ApiNotFoundError:
-                data = {'id': initiator, 'name': initiator_name}
-                # Try and create the initiator
-                # If we get a conflict, ignore it
-                try:
-                    dinit = self.api.initiators.create(tenant=tenant, **data)
-                except dexceptions.ApiConflictError:
-                    pass
             initiator_path = dinit['path']
             # Create ACL with initiator group as reference for each
             # storage_instance in app_instance
