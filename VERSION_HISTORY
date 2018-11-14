@@ -63,4 +63,5 @@
                security vulnerability in <=2.19.X.  Added support for
                filter_function and goodness_function.
 2018.11.1.0 - Adding flash and hybrid capacity info to get_volume_stats
-2018.11.8.0 - Fixing bug that broke 2.7.X support
+2018.11.8.0 - Fixing bug that broke 2.2.X support
+2018.11.14.0 - Bugfixes for v2.1 API support and unicode character support
