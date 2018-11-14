@@ -17,6 +17,7 @@ import functools
 import re
 import time
 import types
+import string
 import uuid
 
 import dfs_sdk
@@ -53,6 +54,8 @@ DEFAULT_SNAP_SLEEP = 1
 API_VERSIONS = ["2.1", "2.2"]
 API_TIMEOUT = 20
 
+VALID_CHARS = set(string.ascii_letters + string.digits + "-_.")
+
 ###############
 # METADATA KEYS
 ###############
@@ -69,8 +72,9 @@ def get_name(resource):
     dn = resource.get('display_name')
     cid = resource.get('id')
     if dn:
+        dn = ''.join([c for c in dn if c in VALID_CHARS])
         # Check to ensure the name is short enough to fit.  Prioritize
-        # the prefix and Cinder ID
+        # the prefix and Cinder ID, strip all invalid characters
         nl = len(OS_PREFIX) + len(dn) + len(cid) + 2
         if nl >= 64:
             dn = dn[:-(nl - 63)]
