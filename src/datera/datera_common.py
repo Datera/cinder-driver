@@ -87,7 +87,9 @@ def get_unmanaged(name):
 
 
 def filter_chars(s):
-    return ''.join([c for c in s if c in VALID_CHARS])
+    if s:
+        return ''.join([c for c in s if c in VALID_CHARS])
+    return s
 
 
 def lookup(func):
