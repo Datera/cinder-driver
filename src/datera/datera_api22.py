@@ -1082,7 +1082,8 @@ class DateraApi(object):
         if not self.do_metadata:
             return
         metadata = {'host': volume.get('host', ''),
-                    'display_name': volume.get('display_name', ''),
+                    'display_name': datc.filter_chars(
+                        volume.get('display_name', '')),
                     'bootable': str(volume.get('bootable', False)),
                     'availability_zone': volume.get('availability_zone', '')}
         if connector:

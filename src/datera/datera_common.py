@@ -72,7 +72,7 @@ def get_name(resource):
     dn = resource.get('display_name')
     cid = resource.get('id')
     if dn:
-        dn = ''.join([c for c in dn if c in VALID_CHARS])
+        dn = filter_chars(dn)
         # Check to ensure the name is short enough to fit.  Prioritize
         # the prefix and Cinder ID, strip all invalid characters
         nl = len(OS_PREFIX) + len(dn) + len(cid) + 2
@@ -84,6 +84,10 @@ def get_name(resource):
 
 def get_unmanaged(name):
     return "-".join((UNMANAGE_PREFIX, name))
+
+
+def filter_chars(s):
+    return ''.join([c for c in s if c in VALID_CHARS])
 
 
 def lookup(func):
