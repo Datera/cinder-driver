@@ -4,4 +4,4 @@ oslo_log
 requests>=2.20.0
 six==1.11.0
 urllib3
-git+http://github.com/Datera/python-sdk
+dfs_sdk>=1.2.17
