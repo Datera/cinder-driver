@@ -22,7 +22,7 @@ Datera Cinder Volume Driver Installation
         * ``san_login = <datera_username>``
         * ``san_password = <datera_password>``
         * ``volume_backend_name = datera``
-        * ``tenant = <datera_tenant>``
+        * ``datera_tenant_id = <datera_tenant>``
     4. Restart Cinder ``service cinder-volume restart``
 
 
