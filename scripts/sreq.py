@@ -441,7 +441,7 @@ def main(args):
     md5 = hashlib.md5()
     md5.update(pfname)
     cname = os.path.join(CACHE, md5.hexdigest())
-    if not args.no_cache and os.path.exists(cname):
+    if not args.no_cache and os.path.exists(cname) and not args.attach_detach:
         with io.open(cname, 'rb') as f:
             found = json.loads(zlib.decompress(f.read()).decode('utf-8'))
     else:
