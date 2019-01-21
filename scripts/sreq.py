@@ -4,8 +4,12 @@ from __future__ import unicode_literals, division, print_function
 import argparse
 import json
 import io
+import hashlib
+import os
 import re
+import shutil
 import sys
+import zlib
 
 from sreq_common import OPERATORS, OPERATORS_FUNC
 
@@ -26,6 +30,8 @@ VERSION HISTORY:
 """
 VERSION = "v1.2.3"
 
+CACHE = '/tmp/.sreq/'
+
 USAGE = """
 
 SREQ
@@ -34,6 +40,8 @@ The Datera Cinder Driver Request Sorter
 
 Basic
     $ ./sreq.py /your/cinder-volume/log/location.log
+
+Processed logfiles are compressed and cached in {} for faster subsequent runs
 
 Multiple Log Files
     $ ./sreq.py /your/cinder-volume/log/location.log \
@@ -75,7 +83,8 @@ Show only requests without replies
 
 Show Volume Attach/Detach (useful for mapping volume to instance)
     $ ./sreq.py /your/cinder-volume/log/location.log --attach-detach
-"""
+""".format(CACHE)
+
 DREQ = re.compile(r"""^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*?
 Datera Trace ID: (?P<trace>(\w+-\w+-\w+-\w+-\w+)|None)
 Datera Request ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
@@ -297,8 +306,7 @@ def gen_log_blocks(data):
 def get_match_dict(args, data, journalctl=False):
     found = {}
 
-    log_blocks = gen_log_blocks(data)
-    for logb in log_blocks:
+    for logb in gen_log_blocks(data):
         if args.journalctl:
             req_match = DREQ_J.match(logb)
         else:
@@ -327,10 +335,6 @@ def get_match_dict(args, data, journalctl=False):
                          res_match.group("delta"),
                          res_match.group("url"),
                          res_match.group("payload")])
-            else:
-                # print("No Request Match\n{}".format(logb))
-                pass
-
     return found
 
 
@@ -425,14 +429,31 @@ def main(args):
     if args.print_operators:
         print_operators()
         sys.exit(0)
+    if args.clear_cache:
+        shutil.rmtree(CACHE)
+
+    if not os.path.exists(CACHE):
+        os.mkdir(CACHE)
+
     files = args.logfiles
 
-    data = gen_file_data(files)
-    if args.attach_detach:
-        get_attach_detach(args, data)
-        sys.exit(0)
+    pfname = ':'.join(sorted(map(os.path.basename, files))).encode('utf-8')
+    md5 = hashlib.md5()
+    md5.update(pfname)
+    cname = os.path.join(CACHE, md5.hexdigest())
+    if not args.no_cache and os.path.exists(cname):
+        with io.open(cname, 'rb') as f:
+            found = json.loads(zlib.decompress(f.read()).decode('utf-8'))
+    else:
+        data = gen_file_data(files)
+        if args.attach_detach:
+            get_attach_detach(args, data)
+            sys.exit(0)
 
-    found = get_match_dict(args, data, args.journalctl).values()
+        found = get_match_dict(args, data, args.journalctl).values()
+        with io.open(cname, 'wb+') as f:
+            data = zlib.compress(json.dumps(list(found)).encode('utf-8'))
+            f.write(data)
 
     if args.filter:
         found = get_filtered(args.filter, found, TUP_VALS)
@@ -477,5 +498,9 @@ if __name__ == "__main__":
     parser.add_argument("--journalctl", action="store_true",
                         help="Log is journalctl based, use journalctl parsers")
     parser.add_argument("--stats", action="store_true")
+    parser.add_argument("--no-cache", action="store_true",
+                        help="Don't read from cached results")
+    parser.add_argument("--clear-cache", action="store_true",
+                        help="Delete cached results from system")
     args = parser.parse_args()
     sys.exit(main(args))
