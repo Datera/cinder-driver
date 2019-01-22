@@ -28,8 +28,9 @@ VERSION HISTORY:
     1.2.1 -- Moved some stuff out into sreq_common
     1.2.2 -- Compatibility updates
     1.2.3 -- Journalctl timestamp compatibility update
+    1.2.4 -- Go-SDK support, results caching, bugfixes
 """
-VERSION = "v1.2.3"
+VERSION = "v1.2.4"
 
 CACHE = '/tmp/.sreq/'
 
