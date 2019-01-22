@@ -106,15 +106,15 @@ def copy_filter_files(files, pts, ts, journalctl=False):
         else:
             jstring = ""
         with io.open(rfile, "w+") as f:
-            exe("./sreq.py {} --json --filter REQTIME@@{} "
+            exe("./sreq.py {} --json --no-cache --filter REQTIME@@{} "
                 "--filter REQTIME**{} {}".format(
                     tmpfiles, pts.timestamp, ts.timestamp, jstring),
                 stdout=f)
 
         # Filter for attach_detach
         with io.open(afile, "w+") as f:
-            exe("./sreq.py {} --json --attach-detach".format(tmpfiles),
-                stdout=f)
+            exe("./sreq.py {} --json --no-cache --attach-detach".format(
+                tmpfiles), stdout=f)
 
     # Compress Files
     mk_archive(tmpd, tmpdfn)
