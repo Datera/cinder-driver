@@ -2,9 +2,10 @@
 from __future__ import unicode_literals, division, print_function
 
 import argparse
+import functools
+import hashlib
 import json
 import io
-import hashlib
 import os
 import re
 import shutil
@@ -85,21 +86,21 @@ Show Volume Attach/Detach (useful for mapping volume to instance)
     $ ./sreq.py /your/cinder-volume/log/location.log --attach-detach
 """.format(CACHE)
 
-DREQ = re.compile(r"""^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*?
+DREQ = re.compile(r"""^(?P<time>\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(\.\d{3}|Z)).*?
 Datera Trace ID: (?P<trace>(\w+-\w+-\w+-\w+-\w+)|None)
 Datera Request ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
 Datera Request URL: (?P<url>.*?)
 Datera Request Method: (?P<method>.*?)
 Datera Request Payload: (?P<payload>.*?)
-Datera Request Headers: (?P<headers>.*?\})""")
+Datera Request Headers: (?P<headers>.*?\})""", re.DOTALL)
 
-DRES = re.compile(r"""^(?P<time>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d.\d{3}).*?
+DRES = re.compile(r"""^(?P<time>\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(\.\d{3}|Z)).*?
 Datera Trace ID: (?P<trace>(\w+-\w+-\w+-\w+-\w+)|None)
 Datera Response ID: (?P<rid>\w+-\w+-\w+-\w+-\w+)
-Datera Response TimeDelta: (?P<delta>\d+\.\d\d?\d?)s
+Datera Response TimeDelta: (?P<delta>\d+\.\d*)s
 Datera Response URL: (?P<url>.*?)
 Datera Response Payload: (?P<payload>.*?)
-""")
+Datera Response Object:""", re.DOTALL)
 
 # Journalctl matchers
 # ISO8601 2018-01-08T20:04:47+0000
@@ -177,11 +178,11 @@ AD_VALS = {"TIME": 0,
            "HOST": 5}
 
 
-def _sort_helper(x):
+def _sort_helper(sort, x):
     try:
-        return x[TUP_VALS[args.sort.upper()]]
+        return x[TUP_VALS[sort.upper()]]
     except IndexError:
-        return x[AD_VALS[args.sort.upper()]]
+        return x[AD_VALS[sort.upper()]]
 
 
 def filter_func(found, loc, val, operator):
@@ -220,7 +221,7 @@ def get_filtered(filters, data, vals):
 # TODO: Currently only finds attach/detach for boot-from-volume attachments.
 # Manual attach/detach does not generate the necessary log messages for us
 # to track it (weirdly).
-def find_attach_detach(lines, journalctl=False):
+def find_attach_detach(f, lines, journalctl=False):
     attach_detach = []
     for line in lines:
         if journalctl:
@@ -245,14 +246,14 @@ def find_attach_detach(lines, journalctl=False):
                 dmatch.group("vm"),
                 None,
                 None))
-    if args.filter:
-        attach_detach = get_filtered(args.filter, attach_detach, AD_VALS)
+    if f:
+        attach_detach = get_filtered(f, attach_detach, AD_VALS)
     return attach_detach
 
 
-def get_attach_detach(args, data):
+def get_attach_detach(f, data):
     jsond = []
-    ad = find_attach_detach(data, args.journalctl)
+    ad = find_attach_detach(f, data, args.journalctl)
     limit = args.limit if args.limit else None
     if args.sort.upper() == 'RESDELTA':
         sort = 'TIME'
@@ -297,8 +298,12 @@ def gen_log_blocks(data):
     for line in data:
         if "Datera Trace ID" in line:
             found = [prev, line]
-            for _ in range(6):
-                found.append(next(data))
+            while True:
+                this = next(data)
+                found.append(this)
+                if ("Datera Response Object" in this or
+                        "Datera Request Headers" in this):
+                    break
             yield "".join(found).replace("\r", "")
         prev = line
 
@@ -340,24 +345,25 @@ def get_match_dict(args, data, journalctl=False):
 
 def orphan_filter(found):
     for entry in found.values() if type(found) == dict else found:
-        if len(entry) < len(TUP_VALS) and args.orphans:
-            # orphans.append(entry)
-            yield entry
-        else:
+        if len(entry) < len(TUP_VALS):
             yield entry
 
 
 def print_results(result):
     limit = args.limit if args.limit else None
-    jsond = []
-    for entry in reversed(sorted(result, key=_sort_helper)):
+    out = []
+    sh = functools.partial(_sort_helper, args.sort)
+    for entry in reversed(sorted(result, key=sh)):
         if limit == 0:
             break
         elif args.json:
             d = {}
             for enum, val in TUP_VALS.items():
-                d[enum] = entry[val]
-            jsond.append(d)
+                try:
+                    d[enum] = entry[val]
+                except IndexError:
+                    pass
+            out.append(d)
         elif args.pretty:
             print()
             for enum, val in sorted(TUP_VALS.items(), key=lambda x: x[1]):
@@ -372,8 +378,8 @@ def print_results(result):
             print()
         if limit:
             limit -= 1
-    if jsond:
-        print(json.dumps(jsond))
+    if args.json:
+        print(json.dumps(out))
 
 
 def print_stats(result):
@@ -447,7 +453,7 @@ def main(args):
     else:
         data = gen_file_data(files)
         if args.attach_detach:
-            get_attach_detach(args, data)
+            get_attach_detach(args.filter, data)
             sys.exit(0)
 
         found = get_match_dict(args, data, args.journalctl).values()
@@ -458,7 +464,7 @@ def main(args):
     if args.filter:
         found = get_filtered(args.filter, found, TUP_VALS)
 
-    result = orphan_filter(found)
+    result = orphan_filter(found) if args.orphans else found
 
     print_results(result)
 
@@ -480,8 +486,8 @@ if __name__ == "__main__":
     parser.add_argument("-f", "--filter", default=[], action='append',
                         help="Filter by this enum value and operator: "
                         "'REQPAYLOAD##someid'.  MAKE SURE TO QUOTE ARGUMENT")
-    parser.add_argument("-s", "--sort", default="RESDELTA",
-                        help="Sort by this enum value: Eg: RESDELTA")
+    parser.add_argument("-s", "--sort", default="REQTIME",
+                        help="Sort by this enum value: Eg: REQTIME")
     parser.add_argument("-l", "--limit", default=None, type=int,
                         help="Limit results to provided value")
     parser.add_argument("-p", "--pretty", action="store_true",
