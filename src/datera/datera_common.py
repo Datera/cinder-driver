@@ -294,13 +294,14 @@ def get_tenant(driver, project_id):
     return _format_tenant(driver.tenant_id)
 
 
-def cvol_to_ai(driver, resource):
-    tenant = get_tenant(driver, resource['project_id'])
-    try:
-        # api.tenants.get needs a non '/'-prefixed tenant id
-        driver.api.tenants.get(tenant.strip('/'))
-    except dfs_sdk.exceptions.ApiNotFoundError:
-        create_tenant(driver, resource['project_id'])
+def cvol_to_ai(driver, resource, tenant=None):
+    if not tenant:
+        tenant = get_tenant(driver, resource['project_id'])
+        try:
+            # api.tenants.get needs a non '/'-prefixed tenant id
+            driver.api.tenants.get(tenant.strip('/'))
+        except dfs_sdk.exceptions.ApiNotFoundError:
+            create_tenant(driver, resource['project_id'])
     cid = resource.get('id', None)
     if not cid:
         raise ValueError('Unsure what id key to use for object', resource)
@@ -312,9 +313,10 @@ def cvol_to_ai(driver, resource):
     return ais[0]
 
 
-def cvol_to_dvol(driver, resource):
-    tenant = get_tenant(driver, resource['project_id'])
-    ai = cvol_to_ai(driver, resource)
+def cvol_to_dvol(driver, resource, tenant=None):
+    if not tenant:
+        tenant = get_tenant(driver, resource['project_id'])
+    ai = cvol_to_ai(driver, resource, tenant=tenant)
     si = ai.storage_instances.list(tenant=tenant)[0]
     vol = si.volumes.list(tenant=tenant)[0]
     return vol

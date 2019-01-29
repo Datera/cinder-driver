@@ -135,7 +135,7 @@ class DateraApi(object):
         with self._offline_flip_2_2(volume):
             # Change Volume Size
             tenant = self.get_tenant(volume['project_id'])
-            dvol = self.cvol_to_dvol(volume)
+            dvol = self.cvol_to_dvol(volume, tenant)
             dvol.set(tenant=tenant, size=new_size)
 
     # =================
@@ -143,8 +143,8 @@ class DateraApi(object):
     # =================
 
     def _create_cloned_volume_2_2(self, volume, src_vref):
-        sdvol = self.cvol_to_dvol(src_vref)
         tenant = self.get_tenant(volume['project_id'])
+        sdvol = self.cvol_to_dvol(src_vref, tenant=tenant)
         src = sdvol.path
         data = {
             'create_mode': 'openstack',
@@ -166,8 +166,8 @@ class DateraApi(object):
     def _delete_volume_2_2(self, volume):
         self._detach_volume_2_2(None, volume)
         try:
-            ai = self.cvol_to_ai(volume)
             tenant = self.get_tenant(volume['project_id'])
+            ai = self.cvol_to_ai(volume, tenant=tenant)
             ai.delete(tenant=tenant, force=True)
         except exception.NotFound:
             msg = ("Tried to delete volume %s, but it was not found in the "
@@ -188,8 +188,8 @@ class DateraApi(object):
     def _initialize_connection_2_2(self, volume, connector):
         # Now online the app_instance (which will online all storage_instances)
         multipath = connector.get('multipath', False)
-        ai = self.cvol_to_ai(volume)
         tenant = self.get_tenant(volume['project_id'])
+        ai = self.cvol_to_ai(volume, tenant=tenant)
         data = {
             'admin_state': 'online'
         }
@@ -244,8 +244,8 @@ class DateraApi(object):
     # =================
 
     def _create_export_2_2(self, context, volume, connector):
-        ai = self.cvol_to_ai(volume)
         tenant = self.get_tenant(volume['project_id'])
+        ai = self.cvol_to_ai(volume, tenant=tenant)
         data = {
             'admin_state': 'offline',
             'force': True
@@ -343,8 +343,8 @@ class DateraApi(object):
             'force': True
         }
         try:
-            ai = self.cvol_to_ai(volume)
             tenant = self.get_tenant(volume['project_id'])
+            ai = self.cvol_to_ai(volume, tenant=tenant)
             ai.set(tenant=tenant, **data)
             # TODO(_alastor_): Make acl cleaning multi-attach aware
             self._clean_acl_2_2(volume)
@@ -354,8 +354,8 @@ class DateraApi(object):
             LOG.info(msg, volume['id'])
 
     def _clean_acl_2_2(self, volume):
-        ai = self.cvol_to_ai(volume)
         tenant = self.get_tenant(volume['project_id'])
+        ai = self.cvol_to_ai(volume, tenant=tenant)
         si = ai.storage_instances.list(tenant=tenant)[0]
         # Clear out ACL
         acl = si.acl_policy.get(tenant=tenant)
@@ -369,8 +369,8 @@ class DateraApi(object):
 
         dummy_vol = {'id': snapshot['volume_id'],
                      'project_id': snapshot['project_id']}
-        dvol = self.cvol_to_dvol(dummy_vol)
         tenant = self.get_tenant(dummy_vol['project_id'])
+        dvol = self.cvol_to_dvol(dummy_vol, tenant=tenant)
         snap_params = {
             'uuid': snapshot['id'],
         }
@@ -385,8 +385,8 @@ class DateraApi(object):
         # Handle case where snapshot is "managed"
         dummy_vol = {'id': snapshot['volume_id'],
                      'project_id': snapshot['project_id']}
-        dvol = self.cvol_to_dvol(dummy_vol)
         tenant = self.get_tenant(dummy_vol['project_id'])
+        dvol = self.cvol_to_dvol(dummy_vol, tenant=tenant)
 
         snapshots = None
 
@@ -428,8 +428,8 @@ class DateraApi(object):
         # Handle case where snapshot is "managed"
         dummy_vol = {'id': snapshot['volume_id'],
                      'project_id': snapshot['project_id']}
-        dvol = self.cvol_to_dvol(dummy_vol)
         tenant = self.get_tenant(dummy_vol['project_id'])
+        dvol = self.cvol_to_dvol(dummy_vol, tenant=tenant)
         found_snap = None
         provider_location = snapshot.get('provider_location')
         if provider_location:
@@ -485,8 +485,8 @@ class DateraApi(object):
                     volume['volume_type_id'], new_type)
 
             self._update_qos_2_2(volume, new_pol, clear_old=True)
-            dvol = self.cvol_to_dvol(volume)
             tenant = self.get_tenant(volume['project_id'])
+            dvol = self.cvol_to_dvol(volume, tenant=tenant)
             # Only replica_count ip_pool requires offlining the app_instance
             if (new_pol['replica_count'] != old_pol['replica_count'] or
                     new_pol['ip_pool'] != old_pol['ip_pool']):
@@ -527,8 +527,8 @@ class DateraApi(object):
         # Rename AppInstance
         dummy_vol = {'id': app_inst_name,
                      'project_id': volume['project_id']}
-        ai = self.cvol_to_ai(dummy_vol)
         tenant = self.get_tenant(volume['project_id'])
+        ai = self.cvol_to_ai(dummy_vol, tenant=tenant)
         data = {'name': datc.get_name(volume)}
         ai.set(tenant=tenant, **data)
         self._add_vol_meta_2_2(volume)
@@ -627,8 +627,8 @@ class DateraApi(object):
         LOG.debug("Unmanaging Cinder volume %s.  Changing name to %s",
                   volume['id'], datc.get_unmanaged(volume['id']))
         data = {'name': datc.get_unmanaged(volume['id'])}
-        ai = self.cvol_to_ai(volume)
         tenant = self.get_tenant(volume['project_id'])
+        ai = self.cvol_to_ai(volume, tenant=tenant)
         ai.set(tenant=tenant, **data)
 
     # ===================
@@ -733,8 +733,8 @@ class DateraApi(object):
         cached = self._vol_exists_2_2(src_vol)
 
         if cached:
-            ai = self.cvol_to_ai(src_vol)
             tenant = self.get_tenant(src_vol['project_id'])
+            ai = self.cvol_to_ai(src_vol, tenant=tenant)
             metadata = ai.metadata.get(tenant=tenant)
             # Check to see if the master image has changed since we created
             # The cached version
@@ -836,15 +836,15 @@ class DateraApi(object):
                     'volume_id': vol['id']}
         self._create_snapshot_2_2(snapshot)
         metadata = {'type': 'cached_image'}
-        ai = self.cvol_to_ai(vol)
-        ai.metadata.set(tenant=self.get_tenant(vol['project_id']),
-                        **metadata)
+        tenant = self.get_tenant(vol['project_id'])
+        ai = self.cvol_to_ai(vol, tenant=tenant)
+        ai.metadata.set(tenant=tenant, **metadata)
         # Cloning offline AI is ~4 seconds faster than cloning online AI
         self._detach_volume_2_2(None, vol)
 
     def _get_vol_timestamp_2_2(self, volume):
-        dvol = self.cvol_to_dvol(volume)
         tenant = self.get_tenant(volume['project_id'])
+        dvol = self.cvol_to_dvol(volume, tenant=tenant)
         snapshots = dvol.snapshots.list(tenant=tenant)
         if len(snapshots) == 1:
             return float(snapshots[0].utc_ts)
@@ -994,8 +994,8 @@ class DateraApi(object):
     # =======
 
     def _update_qos_2_2(self, volume, policies, clear_old=False):
-        dvol = self.cvol_to_dvol(volume)
         tenant = self.get_tenant(volume['project_id'])
+        dvol = self.cvol_to_dvol(volume, tenant=tenant)
         type_id = volume.get('volume_type_id', None)
         if type_id is not None:
             iops_per_gb = int(policies.get('iops_per_gb', 0))
@@ -1060,8 +1060,8 @@ class DateraApi(object):
                                     volume_status):
         """Rename the newly created volume to the original volume so we
            can find it correctly"""
-        ai = self.cvol_to_ai(new_volume)
         tenant = self.get_tenant(new_volume['project_id'])
+        ai = self.cvol_to_ai(new_volume, tenant=tenant)
         data = {'name': datc.get_name(volume)}
         ai.set(tenant=tenant, **data)
         return {'_name_id': None}
@@ -1070,7 +1070,7 @@ class DateraApi(object):
     def _offline_flip_2_2(self, volume):
         reonline = False
         tenant = self.get_tenant(volume['project_id'])
-        ai = self.cvol_to_ai(volume)
+        ai = self.cvol_to_ai(volume, tenant=tenant)
         if ai.admin_state == 'online':
             reonline = True
         ai.set(tenant=tenant, admin_state='offline')
@@ -1089,9 +1089,9 @@ class DateraApi(object):
         if connector:
             metadata.update(connector)
         LOG.debug("Adding volume metadata: %s", metadata)
-        ai = self.cvol_to_ai(volume)
-        ai.metadata.set(tenant=self.get_tenant(volume['project_id']),
-                        **metadata)
+        tenant = self.get_tenant(volume['project_id'])
+        ai = self.cvol_to_ai(volume, tenant=tenant)
+        ai.metadata.set(tenant=tenant, **metadata)
 
     def _support_template_override_2_2(self):
         # Getting the whole api schema is expensive
