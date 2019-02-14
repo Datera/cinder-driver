@@ -32,12 +32,6 @@ ARCHIVE_FILENAME = ("datera-cinder-driver.{node}.{controller}.log.DEBUG"
 INTERVAL = 1 * 60 * 60
 
 
-# def gen_filename(node, controller):
-#     return ARCHIVE_FILENAME.format(
-#         node=node,
-#         controller=controller,
-#         datetime=datetime.datetime.fromtimestamp(time.time()).strftime(
-#             "%Y%m%d-%H%M%S%f"))
 debug = True
 
 
@@ -167,7 +161,7 @@ def main(args):
         if args.once_only:
             break
         # Default collect every hour
-        time.sleep(INTERVAL)
+        time.sleep(args.interval)
     return SUCCESS
 
 
@@ -178,14 +172,17 @@ if __name__ == "__main__":
                         help='If present, logfiles argument (or {} environment'
                              ' variable value) will be interpreted as a '
                              '"journalctl" unit'.format(LOGFILE_VAR))
-    parser.add_argument('-s', '--version', action='store_true',
-                        help='Show callhome script version')
-
+    parser.add_argument('-i', '--interval', default=INTERVAL, type=int,
+                        help="Time in seconds between log collections, "
+                             "default is 1 hour (3600 seconds)")
     parser.add_argument('-r', '--raw-logs', action='store_true',
                         help="Do not process logs. This is useful if Cinder "
                              "and the Datera Cinder driver are not set to "
                              "'debug' mode")
     parser.add_argument('-o', '--once-only', action='store_true',
                         help="Upload logs once and exit, does not run daemon")
+    parser.add_argument('-s', '--version', action='store_true',
+                        help='Show callhome script version')
+
     args = parser.parse_args()
     sys.exit(main(args))
