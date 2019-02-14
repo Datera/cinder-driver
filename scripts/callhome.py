@@ -131,9 +131,6 @@ def main(args):
         print("Cinder Call-Home Script:", VERSION)
         return SUCCESS
 
-    # Timestamp for when we ended log collection
-    timestamp = arrow.get(time.gmtime(time.time()))
-
     if args.logfiles:
         logfiles = args.logfiles
     elif os.getenv(LOGFILE_VAR):
@@ -147,6 +144,8 @@ def main(args):
 
     tsfile = os.path.join(LOCAL_LOGDIR, "last")
     while True:
+        # Timestamp for when we ended log collection
+        timestamp = arrow.get(time.gmtime(time.time()))
         prev_timestamp = arrow.get(0)
         if os.path.isfile(tsfile):
             with io.open(tsfile) as f:
