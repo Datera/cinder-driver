@@ -66,3 +66,4 @@
 2018.11.8.0 - Fixing bug that broke 2.2.X support
 2018.11.14.0 - Bugfixes for v2.1 API support and unicode character support
 2019.1.24.0 - Python-SDK requirements update, README updates
+2019.2.25.0 - Scalability fixes and utility script updates
