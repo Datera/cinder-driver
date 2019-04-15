@@ -11,6 +11,9 @@ Requires:
     ---------
     nslookup
     ipmitool
+    perl
+    git
+    sed
 """
 
 from __future__ import unicode_literals, print_function, division
@@ -33,7 +36,9 @@ DEVSTACK_WAIT = 300
 TEMPEST_WAIT = 300
 INITIAL_SSH_TIMEOUT = 600
 DAT_CINDER_URL = "http://github.com/Datera/cinder-driver"
+DAT_GLANCE_URL = "http://github.com/Datera/glance-driver"
 DEV_DRIVER_LOC = "/opt/stack/cinder/cinder/volume/drivers/datera/"
+DEV_GLANCE_CONF = "/etc/glance/glance-api.conf"
 
 LOCALCONF = r"""
 [[local|localrc]]
@@ -162,7 +167,7 @@ def setup_stack_user(ssh):
     stdin.write('stack\n')
 
 
-def install_devstack(ssh, cluster_ip, tenant, patchset):
+def install_devstack(ssh, cluster_ip, tenant, patchset, version):
     cmd = "git clone http://github.com/openstack-dev/devstack"
     ssh.exec_command(cmd)
     lcnf = LOCALCONF.format(
@@ -170,10 +175,12 @@ def install_devstack(ssh, cluster_ip, tenant, patchset):
         tenant=tenant,
         patchset=patchset)
     ssh.exec_command('echo "{}" > devstack/local.conf'.format(lcnf))
-    if _install_devstack(ssh) == "SetupTools":
+    if _install_devstack(ssh, version) == "SetupTools":
+        # For some reason this is removed by devstack during initial setup
+        # but sticks after we reinstall it and re-stack
         ssh.exec_command("sudo yum install python-setuptools -y")
         _unstack(ssh)
-        _install_devstack(ssh)
+        _install_devstack(ssh, version)
 
 
 def _unstack(ssh):
@@ -181,8 +188,12 @@ def _unstack(ssh):
     time.sleep(30)
 
 
-def _install_devstack(ssh):
-    cmd = "cd devstack && ./stack.sh >/dev/null 2>&1 &"
+def _install_devstack(ssh, version):
+    if version != "master":
+        cmd = ("cd devstack && git checkout {} && ./stack.sh >/dev/null "
+               "2>&1 &".format(version))
+    else:
+        cmd = "cd devstack && ./stack.sh >/dev/null 2>&1 &"
     ssh.exec_command(cmd)
 
     count = 0
@@ -209,15 +220,71 @@ def _install_devstack(ssh):
                                "completed")
 
 
-def _update_driver(ssh, version):
+def _update_drivers(ssh, mgmt_ip, cinder_version, glance_version):
     # Install python sdk to ensure we're using latest version
     ssh.exec_command("sudo pip install -U dfs_sdk")
+    # Install cinder driver
     ssh.exec_command("git clone {}".format(DAT_CINDER_URL))
-    if version != "master":
-        ssh.exec_command("cd cinder-driver && git checkout {}".format(version))
+    if cinder_version != "master":
+        ssh.exec_command("cd cinder-driver && git checkout {}".format(
+            cinder_version))
     ssh.exec_command("cd cinder-driver/src/datera && cp *.py {}".format(
         DEV_DRIVER_LOC))
     ssh.exec_command("sudo service devstack@c-vol restart")
+
+    # Install glance driver
+    install, entryp = _find_glance_dirs(ssh)
+    if not install or not entryp:
+        print("Could not find all glance install directories: [{}, {}]".format(
+            install, entryp))
+    ssh.exec_command("git clone {}".format(DAT_GLANCE_URL))
+    ssh.exec_command("cd glance-driver/src && sudo cp *.py {}".format(
+        "/".join((install, "_drivers"))))
+    # Modify entry_points.txt file
+    cmd = ("sudo sed -i 's/vmware = glance_store._drivers.vmware_datastore:"
+           "Store/datera = glance_store._drivers.datera:Store/' {}".format(
+               entryp))
+    ssh.exec_command(cmd)
+    # Modify backend.py file
+    backend = "/".join((install, "backend.py"))
+    cmd = "sudo sed -i 's/vsphere/datera/' {}".format(backend)
+    ssh.exec_command(cmd)
+    # Modify glance-api.conf file, this is gross, but the easiest way
+    # of doing a straight replace of these strings.  We have to use
+    # perl instead of sed because sed really doesn't want to match
+    # multiline strings
+    glance_store = """
+[glance_store]
+filesystem_store_datadir = /opt/stack/data/glance/images/
+""".replace("/", "\\/").replace('[', '\\[').replace(']', '\\]')
+    new_glance_store = """
+[glance_store]
+filesystem_store_datadir = /opt/stack/data/glance/images/
+stores = file,datera
+default_store = datera
+datera_san_ip = {}
+datera_san_login = admin
+datera_san_password = password
+datera_replica_count = 1
+""".format(mgmt_ip).replace("/", "\\/").replace('[', '\\[').replace(']', '\\]')
+    try:
+        ssh.exec_command("grep datera_san_ip {}".format(DEV_GLANCE_CONF))
+    except EnvironmentError:
+        cmd = "perl -i -0pe 's/{}/{}/' {}".format(
+                glance_store, new_glance_store, DEV_GLANCE_CONF)
+        ssh.exec_command(cmd)
+    # Modify glance filters
+    cmd = "cd glance-driver/etc/glance && sudo cp -r * /etc/glance/"
+    ssh.exec_command(cmd)
+    ssh.exec_command("sudo service devstack@g-api restart")
+
+
+def _find_glance_dirs(ssh):
+    cmd = "sudo find /usr -name 'glance_store' 2>/dev/null"
+    install = ssh.exec_command(cmd).strip()
+    cmd = "sudo find /usr -name 'glance_store*dist-info' 2>/dev/null"
+    info = ssh.exec_command(cmd).strip()
+    return (install, "/".join((info, "entry_points.txt")))
 
 
 def run_tempest(ssh):
@@ -271,14 +338,23 @@ def reinstall_node(ssh, ip):
 
 def main(args):
 
+    if args.only_update_drivers:
+        ssh = SSH(args.node_ip, 'stack', 'stack')
+        _update_drivers(
+            ssh, args.cluster_ip, args.cinder_driver_version,
+            args.glance_driver_version)
+        return 0
     root_ssh = SSH(args.node_ip, args.username, args.password)
     if args.reimage:
         reinstall_node(root_ssh, args.node_ip)
     setup_stack_user(root_ssh)
 
     ssh = SSH(args.node_ip, 'stack', 'stack')
-    install_devstack(ssh, args.cluster_ip, args.tenant, args.patchset)
-    _update_driver(ssh, args.driver_version)
+    install_devstack(ssh, args.cluster_ip, args.tenant, args.patchset,
+                     args.devstack_version)
+    _update_drivers(
+        ssh, args.cluster_ip, args.cinder_driver_version,
+        args.glance_driver_verison)
     if args.run_tempest:
         result = run_tempest(ssh)
         if result == 0:
@@ -296,10 +372,13 @@ if __name__ == '__main__':
     parser.add_argument('node_ip')
     parser.add_argument('username')
     parser.add_argument('password')
-    parser.add_argument('--driver-version', default='master')
+    parser.add_argument('--cinder-driver-version', default='master')
+    parser.add_argument('--glance-driver-version', default='master')
+    parser.add_argument('--devstack-version', default='master')
     parser.add_argument('--tenant', default='')
     parser.add_argument('--patchset', default='master')
     parser.add_argument('--run-tempest', action='store_true')
     parser.add_argument('--reimage', action='store_true')
+    parser.add_argument('--only-update-drivers', action='store_true')
     args = parser.parse_args()
     sys.exit(main(args))
