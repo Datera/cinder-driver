@@ -10,7 +10,7 @@ Datera Cinder Volume Driver Installation
 
     1. Clone Repository ``git clone http://github.com/Datera/cinder-driver``
     2. Copy Driver ``cd cinder-driver && cp src/datera/*.py /usr/local/lib/pythonX.X/dist-packages/cinder/volume/drivers/datera``
-    3. Install Python-SDK ``sudo pip install git+http://github.com/Datera/python-sdk``
+    3. Install Python-SDK ``sudo pip install -U dfs_sdk``
     4. Modify ``/etc/cinder/cinder.conf``
       * Under [DEFAULT]
         * ``default_volume_type = datera``
@@ -36,7 +36,7 @@ Then you can install the Python-SDK manually via
 
 .. code-block::
 
-    $ pip install git+http://github.com/Datera/python-sdk
+    $ pip install -U dfs_sdk
 
 
 ------------------------------------
@@ -49,6 +49,22 @@ Datera Volume Driver Version History
 
    * - Version
      - Changes
+   * - 2019.2.25.0
+     - Scalability fixes and utility script updates
+   * - 2019.1.24.0
+     - Python-SDK requirements update, README updates
+   * - 2018.11.14.0
+     - Bugfixes for v2.1 API support and unicode character support
+   * - 2018.11.8.0
+     - Fixing bug that broke 2.2.X support
+   * - 2018.11.1.0
+     - Added flash and hybrid capacity info to get_volume_stats
+   * - 2018.10.30.0
+     - Adding template_override support.  Added datera_disable_template_override cfgOpt to disable this feature.  Updated required requests version to >=2.20.0 because of a security vulnerability in <=2.19.X.  Added support for filter_function and goodness_function.
+   * - 2018.10.8.1
+     - Adding thread_local to Python-SDK constructor call. This preserves trace_id in the logs
+   * - 2018.10.8.0
+     - Added extra_headers to Python-SDK constructor call.  This allows for the SDK to send the type of driver performing each request along with the request.  This functionality existed before the Python-SDK revamp, so this change adds the functionality back in.
    * - 2018.9.17.0
      - Readme and requirements.txt changes
    * - 2018.7.13.0
@@ -160,6 +176,8 @@ Volume Driver Cinder.conf Options
      - (Bool) Set to True to enable Datera backend image caching
    * - ``datera_image_cache_volume_type_id`` = ``None``
      - (String) Cinder volume type id to use for cached images
+
+
 
 
 
