@@ -1,0 +1,16 @@
+<html>
+  <head>
+    <title>Datera CI - {{ ref_name }}</title>
+  </head>
+  <body>
+    <p><img src="http://stkci.daterainc.com.s3-website-us-west-2.amazonaws.com/datera-logo.png"></p>
+    <table><tr><th></th><th>Name</th></tr><tr><th colspan="5"><hr></th></tr>
+      {% if back %}
+      <tr><td valign="top"><img src="http://stkci.daterainc.com.s3-website-us-west-2.amazonaws.com/back.gif"></td><td><a href="http://stkci.daterainc.com.s3-website-us-west-2.amazonaws.com/{{ ref_name }}/{{ back }}/index.html">Parent Directory</a></td><td>&nbsp;</td></tr>
+      {% endif %}
+      {% for file in files %}
+      <tr><td valign="top"><img src="http://stkci.daterainc.com.s3-website-us-west-2.amazonaws.com/{{ file.type }}.gif"></td><td><a href="http://stkci.daterainc.com.s3-website-us-west-2.amazonaws.com/{{ file.topkey }}/{{ file.relpath }}{% if file.dir %}/index.html{% endif %}">{{ file.name }}</a></td><td>&nbsp;</td></tr>
+      {% endfor %}
+    </table>
+  </body>
+</html>

@@ -19,8 +19,6 @@ Requires:
 from __future__ import unicode_literals, print_function, division
 
 import argparse
-import shlex
-import subprocess
 import sys
 import time
 
@@ -30,8 +28,14 @@ except ImportError:
     print("Paramiko required to run script, run 'pip install paramiko'")
     sys.exit(1)
 
+# Py 2/3 compat
+try:
+    str = unicode
+except NameError:
+    pass
 
-REBOOT_WAIT = 300
+
+REBOOT_WAIT = 30 * 60
 DEVSTACK_WAIT = 300
 TEMPEST_WAIT = 300
 INITIAL_SSH_TIMEOUT = 600
@@ -125,6 +129,13 @@ class SSH(object):
             password=self.password,
             banner_timeout=INITIAL_SSH_TIMEOUT)
 
+    def reconnect(self, timeout):
+        self.ssh.connect(
+            hostname=self.ip,
+            username=self.username,
+            password=self.password,
+            banner_timeout=timeout)
+
     def exec_command(self, command, fail_ok=False):
         s = self.ssh
         msg = "Executing command: {} on VM: {}".format(command, self.ip)
@@ -141,7 +152,7 @@ class SSH(object):
                 "Nonzero return code: {} stderr: {}".format(
                     exit_status,
                     stderr.read()))
-        return result
+        return result.decode('utf-8')
 
 
 def setup_stack_user(ssh):
@@ -289,7 +300,7 @@ def _find_glance_dirs(ssh):
 
 def run_tempest(ssh):
     ssh.exec_command("cd /opt/stack/tempest && "
-                     "tox -e all-plugin -- volume "
+                     "tox -e all-plugin -- volume --concurrency"
                      "> console.out.log 2>/dev/null &")
     count = 0
     increment = 10
@@ -303,59 +314,65 @@ def run_tempest(ssh):
             time.sleep(increment)
             count += increment
     if count >= DEVSTACK_WAIT:
-        raise EnvironmentError("Timeout expired before stack.sh "
+        raise EnvironmentError("Timeout expired before tempest "
                                "completed")
 
 
-def reinstall_node(ssh, ip):
-    print("Wiping node")
-    cmd = r"nslookup {} | grep -oP '(\w+).tlx.daterainc.com'"
-    host = subprocess.check_output(shlex.split(cmd.format(ip)))
-    if not host:
-        raise ValueError("Couldn't determine hostname from ip: {}".format(ip))
-    subprocess.check_output(shlex.split(
-        'ipmitool -H {}-ipmi.tlx.daterainc.com -U '
-        'root -P carnifex -I lanplus chassis bootdev pxe'.format(host)))
-    ssh.exec_command("dd if=/dev/zero of=/dev/sda bs=1M count=500 && reboot")
+def do_reimage_client(ssh):
+    print("Wiping client")
+    cmd = r"yes yes | sudo /root/reinstall.sh"
+    ssh.exec_command(cmd)
     # Wait for node to reboot
     time.sleep(10)
     # Poll for node availability
     count = 0
-    increment = 10
+    increment = 20
     while count <= REBOOT_WAIT:
         try:
+            ssh.reconnect(10)
             ssh.exec_command("uname -a")
             print("Wipe complete, node accessible")
-            break
+            return ssh
+        except paramiko.ssh_exception.BadHostKeyException:
+            # In this case the remiage completed successfully but we're
+            # getting rejected because the host keys don't match which
+            # we expect.  We'll just reinitialize the ssh object to work
+            # around this.
+            ssh = SSH(ssh.ip, ssh.username, ssh.password)
+            ssh.exec_command("uname -a")
+            print("Wipe complete, node accessible")
+            return ssh
         except Exception as e:
+            print(e)
             if count >= REBOOT_WAIT:
                 print(e)
-                raise EnvironmentError(
-                    "Timeout expired before node became reachable")
+                raise
+                # raise EnvironmentError(
+                #     "Timeout expired before node became reachable")
             time.sleep(increment)
             count += increment
 
 
-def main(args):
+def main(node_ip, username, password, cluster_ip, tenant, patchset,
+         devstack_version, cinder_driver_version, glance_driver_version,
+         only_update_drivers, reimage_client):
 
-    if args.only_update_drivers:
-        ssh = SSH(args.node_ip, 'stack', 'stack')
+    if only_update_drivers:
+        ssh = SSH(node_ip, 'stack', 'stack')
         _update_drivers(
-            ssh, args.cluster_ip, args.cinder_driver_version,
-            args.glance_driver_version)
+            ssh, cluster_ip, cinder_driver_version,
+            glance_driver_version)
         return 0
-    root_ssh = SSH(args.node_ip, args.username, args.password)
-    if args.reimage:
-        reinstall_node(root_ssh, args.node_ip)
+    root_ssh = SSH(node_ip, username, password)
+    if reimage_client:
+        root_ssh = do_reimage_client(root_ssh)
     setup_stack_user(root_ssh)
 
-    ssh = SSH(args.node_ip, 'stack', 'stack')
-    install_devstack(ssh, args.cluster_ip, args.tenant, args.patchset,
-                     args.devstack_version)
-    _update_drivers(
-        ssh, args.cluster_ip, args.cinder_driver_version,
-        args.glance_driver_verison)
-    if args.run_tempest:
+    ssh = SSH(node_ip, 'stack', 'stack')
+    install_devstack(ssh, cluster_ip, tenant, patchset, devstack_version)
+    _update_drivers(ssh, cluster_ip, cinder_driver_version,
+                    glance_driver_version)
+    if run_tempest:
         result = run_tempest(ssh)
         if result == 0:
             print('Tempest Passed!!!')
@@ -378,7 +395,18 @@ if __name__ == '__main__':
     parser.add_argument('--tenant', default='')
     parser.add_argument('--patchset', default='master')
     parser.add_argument('--run-tempest', action='store_true')
-    parser.add_argument('--reimage', action='store_true')
+    parser.add_argument('--reimage-client', action='store_true')
     parser.add_argument('--only-update-drivers', action='store_true')
     args = parser.parse_args()
-    sys.exit(main(args))
+    sys.exit(main(
+        args.node_ip,
+        args.username,
+        args.password,
+        args.cluster_ip,
+        args.tenant,
+        args.patchset,
+        args.devstack_version,
+        args.cinder_driver_version,
+        args.glance_driver_version,
+        args.only_update_drivers,
+        args.reimage_client))
