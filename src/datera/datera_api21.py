@@ -464,7 +464,7 @@ class DateraApi(object):
         # And that backend matches this driver
         old_pol = self._get_policies_for_resource(volume)
         new_pol = self._get_policies_for_volume_type(new_type)
-        if (host['capabilities']['vendor_name'].lower() ==
+        if (host['capabilities']['volume_backend_name'].lower() ==
                 self.backend_name.lower()):
             LOG.debug("Starting fast volume retype")
 
