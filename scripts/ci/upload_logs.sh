@@ -63,8 +63,8 @@ cd /opt/stack/tempest
 cp etc/tempest.conf  $HOME/$REF_NAME/logs/tempest.conf
 
 cd $HOME
-cp console.log.out  $HOME/$REF_NAME/console.log.out
-cp console.log.out  $HOME/$REF_NAME/console.log.txt
+cp /opt/stack/tempest/console.out.log  $HOME/$REF_NAME/console.out.log
+cp /opt/stack/tempest/console.out.log  $HOME/$REF_NAME/console.out.txt
 # Tar it all up
 #cd $REF_NAME
 tar -zcvf $REF_NAME.tar.gz $REF_NAME

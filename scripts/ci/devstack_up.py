@@ -59,25 +59,17 @@ SERVICE_PASSWORD=secrete
 SERVICE_TOKEN=111222333444
 LIBVIRT_TYPE=kvm
 
+IP_VERSION=4
+
 # Screen console logs will capture service logs.
-SYSLOG=False
 LOGDIR=/opt/stack/logs
-SCREEN_LOGS=/opt/stack/logs/screen
 LOGFILE=/opt/stack/devstacklog.txt
-LOG_COLOR=True
 VERBOSE=True
 VIRT_DRIVER=libvirt
-LOG_COLOR=True
-CINDER_PERIODIC_INTERVAL=10
+CINDER_PERIODIC_INTERVAL=20
 CINDER_SECURE_DELETE=False
 API_RATE_LIMIT=False
 TEMPEST_HTTP_IMAGE=http://127.0.0.1/
-USE_SCREEN=True
-
-# Issues with timeouts to openstack.git
-# move to https direct to github as
-# its been reported as more reliable
-#GIT_BASE=https://github.com
 
 # Add these until pbr 1.8 lands in reqs
 REQUIREMENTS_MODE=strict
@@ -114,10 +106,11 @@ datera_debug_replica_count_override=True
 
 
 class SSH(object):
-    def __init__(self, ip, username, password):
+    def __init__(self, ip, username, password, keyfile=None):
         self.ip = ip
         self.username = username
         self.password = password
+        self.keyfile = keyfile
 
         self.ssh = paramiko.SSHClient()
         self.ssh.set_missing_host_key_policy(
@@ -127,6 +120,7 @@ class SSH(object):
             hostname=self.ip,
             username=self.username,
             password=self.password,
+            key_filename=self.keyfile,
             banner_timeout=INITIAL_SSH_TIMEOUT)
 
     def reconnect(self, timeout):
@@ -134,6 +128,7 @@ class SSH(object):
             hostname=self.ip,
             username=self.username,
             password=self.password,
+            key_filename=self.keyfile,
             banner_timeout=timeout)
 
     def exec_command(self, command, fail_ok=False):
@@ -233,7 +228,7 @@ def _install_devstack(ssh, version):
 
 def _update_drivers(ssh, mgmt_ip, cinder_version, glance_version):
     # Install python sdk to ensure we're using latest version
-    ssh.exec_command("sudo pip install -U dfs_sdk")
+    ssh.exec_command("sudo pip install dfs_sdk")
     # Install cinder driver
     ssh.exec_command("git clone {}".format(DAT_CINDER_URL))
     if cinder_version != "master":
@@ -243,6 +238,9 @@ def _update_drivers(ssh, mgmt_ip, cinder_version, glance_version):
         DEV_DRIVER_LOC))
     ssh.exec_command("sudo service devstack@c-vol restart")
 
+    # Cause sometimes we just don't need this complexity
+    if glance_version == "none":
+        return
     # Install glance driver
     install, entryp = _find_glance_dirs(ssh)
     if not install or not entryp:
@@ -299,9 +297,11 @@ def _find_glance_dirs(ssh):
 
 
 def run_tempest(ssh):
+    ssh.exec_command("cd /opt/stack/cinder && echo cinder_commit_id "
+                     "$(git rev-parse --short HEAD) > console.out.log")
     ssh.exec_command("cd /opt/stack/tempest && "
-                     "tox -e all-plugin -- volume --concurrency"
-                     "> console.out.log 2>/dev/null &")
+                     "tox -e all -- volume | tee "
+                     "console.out.log 2>/dev/null &")
     count = 0
     increment = 10
     while count <= TEMPEST_WAIT:
@@ -358,7 +358,10 @@ def main(node_ip, username, password, cluster_ip, tenant, patchset,
          only_update_drivers, reimage_client):
 
     if only_update_drivers:
-        ssh = SSH(node_ip, 'stack', 'stack')
+        if args.keyfile:
+            ssh = SSH(node_ip, 'ubuntu', None, keyfile=args.keyfile)
+        else:
+            ssh = SSH(node_ip, 'stack', 'stack')
         _update_drivers(
             ssh, cluster_ip, cinder_driver_version,
             glance_driver_version)
@@ -389,6 +392,7 @@ if __name__ == '__main__':
     parser.add_argument('node_ip')
     parser.add_argument('username')
     parser.add_argument('password')
+    parser.add_argument('--keyfile')
     parser.add_argument('--cinder-driver-version', default='master')
     parser.add_argument('--glance-driver-version', default='master')
     parser.add_argument('--devstack-version', default='master')

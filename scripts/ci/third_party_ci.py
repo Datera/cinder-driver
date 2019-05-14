@@ -18,11 +18,10 @@ import boto
 from boto.s3.connection import OrdinaryCallingFormat
 from gerritlib.gerrit import Gerrit
 from jinja2 import Template
+import paramiko
 import ruamel.yaml as yaml
 import simplejson as json
-from six.moves.queue import Queue
-
-from ci import devstack_up
+from six.moves.queue import Queue, Empty
 
 PATCH_QUEUE = Queue()
 
@@ -31,12 +30,21 @@ UPLOAD_FILE = os.path.join(
         os.path.abspath(__file__)),
     'upload_logs.sh')
 
+DEVSTACK_FILE = os.path.join(
+    os.path.dirname(
+        os.path.abspath(__file__)),
+    'devstack_up.py')
+
 SUCCESS = 0
 FAIL = 1
 DEBUG = False
+ALL_EVENTS = False
 BASE_URL = 'http://stkci.daterainc.com.s3-website-us-west-2.amazonaws.com/'
 LISTING_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__name__)),
                                 'listing.j2')
+
+INITIAL_SSH_TIMEOUT = 600
+EXIT = "3pci-exit"
 
 
 def dprint(*args, **kwargs):
@@ -98,6 +106,51 @@ def create_indexes(rootdir, ref_name):
             fd.write(output)
 
 
+class SSH(object):
+    def __init__(self, ip, username, password, keyfile=None):
+        self.ip = ip
+        self.username = username
+        self.password = password
+        self.keyfile = keyfile
+
+        self.ssh = paramiko.SSHClient()
+        self.ssh.set_missing_host_key_policy(
+            paramiko.AutoAddPolicy())
+        # Normal username/password usage
+        self.ssh.connect(
+            hostname=self.ip,
+            username=self.username,
+            password=self.password,
+            key_filename=self.keyfile,
+            banner_timeout=INITIAL_SSH_TIMEOUT)
+
+    def reconnect(self, timeout):
+        self.ssh.connect(
+            hostname=self.ip,
+            username=self.username,
+            password=self.password,
+            key_filename=self.keyfile,
+            banner_timeout=timeout)
+
+    def exec_command(self, command, fail_ok=False):
+        s = self.ssh
+        msg = "Executing command: {} on VM: {}".format(command, self.ip)
+        print(msg)
+        _, stdout, stderr = s.exec_command(command)
+        exit_status = stdout.channel.recv_exit_status()
+        result = None
+        if int(exit_status) == 0:
+            result = stdout.read()
+        elif fail_ok:
+            result = stderr.read()
+        else:
+            raise EnvironmentError(
+                "Nonzero return code: {} stderr: {}".format(
+                    exit_status,
+                    stderr.read()))
+        return result.decode('utf-8')
+
+
 class ThirdParty(object):
 
     def __init__(self, project, ghost, guser, gport, gkeyfile, ci_name,
@@ -133,9 +186,9 @@ class ThirdParty(object):
                         password,
                         cluster_ip,
                         patchset,
-                        devstack_version,
                         cinder_driver_version,
-                        glance_driver_version):
+                        glance_driver_version,
+                        keyfile=None):
         """
         This will actually run the CI logic.  If post_failed is set to `False`,
         it will try again if it detects failure in the results.  This should
@@ -144,21 +197,21 @@ class ThirdParty(object):
         dprint("Running against: ", patchset)
         patch_ref_name = patchset.replace("/", "-")
         # Setup Devstack and run tempest
-        devstack_up.main(
-            node_ip,
-            username,
-            password,
-            cluster_ip,
-            '',
-            patchset,
-            devstack_version,
-            cinder_driver_version,
-            glance_driver_version,
-            False)
-
+        subprocess.check_output(shlex.split(
+            "{devstack_up} {cluster_ip} {node_ip} {username} {password} "
+            "--patchset {patchset} "
+            "--reimage-client "
+            "--glance-driver-version none"
+            "--run-tempest ".format(devstack_up=DEVSTACK_FILE,
+                                    cluster_ip=cluster_ip,
+                                    node_ip=node_ip,
+                                    username=username,
+                                    password=password)
+        ))
         # Upload logs
+        ssh = SSH(node_ip, username, password, keyfile=keyfile)
         success, log_location, commit_id = self._upload_logs(
-            node_ip, patch_ref_name, post_failed=False)
+            ssh, patch_ref_name, post_failed=False)
         # Post results
         if self.upload:
             self._post_results(success, log_location, commit_id)
@@ -168,37 +221,37 @@ class ThirdParty(object):
             tprint("FAIL: {}\nLOGS: {}".format(patchset, log_location))
 
     def _upload_logs(self,
-                     host,
+                     host_ssh,
                      patch_ref_name,
                      internal=False,
                      post_failed=False):
-        sftp = host._ssh.open_sftp()
+        sftp = host_ssh.ssh.open_sftp()
         sftp.put(UPLOAD_FILE, "/tmp/upload_logs.sh")
-        host.exec_command("chmod +x /tmp/upload_logs.sh")
-        host.exec_command(
+        host_ssh.exec_command("chmod +x /tmp/upload_logs.sh")
+        host_ssh.exec_command(
             "sudo /tmp/upload_logs.sh {}".format(patch_ref_name))
         filename = "{}{}".format(patch_ref_name, ".tar.gz")
-        sftp = host._ssh.open_sftp()
+        sftp = host_ssh.ssh.open_sftp()
         tempfilename = "/tmp/{}".format(filename)
         tempfiledirectory = tempfilename.replace(".tar.gz", "")
         dprint("SFTP-ing logs locally, remote name: {} local name: {}".format(
             filename, tempfilename))
         sftp.get(filename, tempfilename)
-        cmd = "tar -zxvf {} -C {} --warning=no-timestamp".format(
+        cmd = "tar -zxvf {} -C {} -m".format(
                 tempfilename, '/tmp/')
         dprint("Running: ", cmd)
         dprint(subprocess.check_output(shlex.split(cmd)))
         create_indexes(tempfiledirectory, patch_ref_name)
         os.chdir(tempfiledirectory)
-        match = re.match(
-            r"^cinder_commit_id\s(?P<commit_id>.*)$",
-            io.open('console.log.out').read(),
-            re.M)
+        with io.open('console.out.log') as f:
+            result_data = f.read()
+        match = re.search(
+            r"^cinder_commit_id\s(?P<commit_id>.*)$", result_data, re.M)
         commit_id = match.group('commit_id')
         dprint("Commit ID: ", commit_id)
         try:
             success = subprocess.check_output(
-                shlex.split("grep 'Failed: 0' console.log.out"))
+                shlex.split("grep 'Failed: 0' console.out.log"))
             success = True
             dprint("Found SUCCESS")
         except subprocess.CalledProcessError:
@@ -221,6 +274,7 @@ class ThirdParty(object):
         for subdir, dirs, files, in os.walk(data):
             for file in files:
                 path = os.path.join(subdir, file)
+                print(path)
                 subkey = boto.s3.key.Key(bucket)
                 subkey.key = path
                 subkey.set_contents_from_filename(path)
@@ -257,10 +311,11 @@ class ThirdParty(object):
 def watcher(key):
 
     def _helper():
-        process = subprocess.Popen(shlex.split(
-            "ssh -i {} -p 29418 datera-ci@review.openstack.org "
-            "\"gerrit stream-events\"".format(key)),
-            stdout=subprocess.PIPE)
+        cmd = "ssh -i {} -p 29418 datera-ci@review.openstack.org " \
+               "\"gerrit stream-events\"".format(key)
+        dprint("Cmd:", cmd)
+        process = subprocess.Popen(
+            shlex.split(cmd), stdout=subprocess.PIPE)
         for line in iter(process.stdout.readline, b''):
             event = json.loads(line)
             if event.get('type') == 'comment-added':
@@ -268,6 +323,12 @@ def watcher(key):
                 author = event['author'].get('username')
                 project = event['change']['project']
                 patchSet = event['patchSet']['ref']
+                if ALL_EVENTS:
+                    print("project: " + project,
+                          "author: " + author,
+                          "patchSet: " + patchSet,
+                          "comment: " + comment[:25].replace(
+                              "\n", " "), sep="|")
                 if 'Verified+2' in comment or 'Verified+1' in comment:
                     dprint("project: " + project,
                            "author: " + author,
@@ -287,27 +348,25 @@ def watcher(key):
 
     wt = threading.Thread(target=_helper)
     wt.daemon = True
+    print("Starting watcher")
     wt.start()
 
 
-def runner(conf, upload):
-
-    third_party = ThirdParty(
-        conf['project'],
-        conf['host'],
-        conf['user'],
-        conf['port'],
-        conf['ssh_key'],
-        conf['ci_name'],
-        conf['aws_key_id'],
-        conf['aws_secret_key'],
-        conf['remote_results_bucket'],
-        upload=False)
+def runner(conf, third_party, upload):
 
     def _helper():
         count = 0
         while True:
-            patchref = PATCH_QUEUE.get()
+            patchref = None
+            try:
+                patchref = PATCH_QUEUE.get(block=False)
+            except Empty:
+                time.sleep(0.5)
+                if os.path.exists(EXIT):
+                    print("Cleaning up")
+                    os.unlink(EXIT)
+                    break
+                continue
             count += 1
             # Every 10 tests we'll reimage the box
             if count % 10 == 0:
@@ -320,7 +379,6 @@ def runner(conf, upload):
                         conf['node_password'],
                         conf['cluster_ip'],
                         conf['patchset'],
-                        conf['devstack_version'],
                         conf['cinder_driver_version'],
                         conf['glance_driver_version'])
             except Exception:
@@ -331,6 +389,7 @@ def runner(conf, upload):
             print("Finished CI on: {}".format(patchref))
 
     rt = threading.Thread(target=_helper)
+    print("Starting runner")
     rt.start()
 
 
@@ -355,18 +414,51 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('config')
     parser.add_argument('-u', '--upload', action='store_true')
+    parser.add_argument('--upload-only', action='store_true')
     parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--show-all-events', action='store_true')
     args = parser.parse_args()
 
     if args.debug:
-        global debug
+        global DEBUG
         DEBUG = True
-        dprint("Running with DEBUG set to:", DEBUG)
+        dprint("Running with DEBUG on")
+
+    if args.show_all_events:
+        global ALL_EVENTS
+        ALL_EVENTS = True
+
+    if not os.path.exists(DEVSTACK_FILE):
+        print("Missing required devstack_up.py file in current directory")
 
     conf = parse_config_file(args.config)
+    third_party = ThirdParty(
+        conf['project'],
+        conf['host'],
+        conf['node_user'],
+        conf['port'],
+        conf['ssh_key'],
+        conf['ci_name'],
+        conf['aws_key_id'],
+        conf['aws_secret_key'],
+        conf['remote_results_bucket'],
+        upload=False)
 
-    watcher(conf['ssh_key'])
-    runner(conf, args.upload)
+    if args.upload_only:
+        ssh = SSH(conf['node_ip'], conf['node_user'], conf['node_password'],
+                  keyfile=conf['keyfile'])
+        success, log_location, commit_id = third_party._upload_logs(
+            ssh, conf['patchset'], post_failed=False)
+        third_party._post_results(success, log_location, commit_id)
+    else:
+        watcher(conf['ssh_key'])
+        runner(conf, third_party, args.upload)
+
+    try:
+        while True:
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        io.open(EXIT, 'w+').close()
 
     return SUCCESS
 
