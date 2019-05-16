@@ -87,3 +87,7 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+3pci.yml
+3pci.yml.sh
+jenkins_key
