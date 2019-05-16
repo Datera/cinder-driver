@@ -59,6 +59,11 @@ def tprint(*args, **kwargs):
     print(tid, pt, *args, **kwargs)
 
 
+def exe(cmd):
+    dprint(cmd)
+    return subprocess.check_output(shlex.split(cmd))
+
+
 def create_indexes(rootdir, ref_name):
     template = Template(open(LISTING_TEMPLATE).read())
     previous_subdir = None
@@ -154,7 +159,8 @@ class SSH(object):
 class ThirdParty(object):
 
     def __init__(self, project, ghost, guser, gport, gkeyfile, ci_name,
-                 aws_key_id, aws_secret_key, remote_bucket, upload=False):
+                 aws_key_id, aws_secret_key, remote_bucket, upload=False,
+                 use_existing_devstack=False):
         self.project = project
         self.gerrit = Gerrit(ghost, guser, port=gport, keyfile=gkeyfile)
         self.gerrit.ci_name = ci_name
@@ -162,9 +168,12 @@ class ThirdParty(object):
         self.aws_key_id = aws_key_id
         self.aws_secret_key = aws_secret_key
         self.remote_results_bucket = remote_bucket
+        self.use_existing_devstack = use_existing_devstack
 
-    def _post_results(self, success, log_location, commit_id):
-        base_cmd = "gerrit review -m {}"
+    def _post_results(self, ssh, success, log_location, commit_id):
+        base_cmd = ("ssh -i {} -p 29418 {}@review.openstack.org "
+                    "gerrit review -m ".format(
+                        self.gerrit.keyfile, self.gerrit.username) + "'{}'")
         if success:
             cmd = base_cmd.format(
                 "\"* {} {} : SUCCESS \" {}".format(
@@ -178,7 +187,7 @@ class ThirdParty(object):
                     log_location,
                     commit_id))
         dprint("Posting gerrit results:\n{}".format(cmd))
-        self.gerrit._ssh(cmd)
+        ssh.exec_command(cmd)
 
     def run_ci_on_patch(self,
                         node_ip,
@@ -197,24 +206,41 @@ class ThirdParty(object):
         dprint("Running against: ", patchset)
         patch_ref_name = patchset.replace("/", "-")
         # Setup Devstack and run tempest
-        subprocess.check_output(shlex.split(
-            "{devstack_up} {cluster_ip} {node_ip} {username} {password} "
-            "--patchset {patchset} "
-            "--reimage-client "
-            "--glance-driver-version none"
-            "--run-tempest ".format(devstack_up=DEVSTACK_FILE,
-                                    cluster_ip=cluster_ip,
-                                    node_ip=node_ip,
-                                    username=username,
-                                    password=password)
-        ))
+        if self.use_existing_devstack:
+            exe(
+                "{devstack_up} {cluster_ip} {node_ip} {username} {password} "
+                "--patchset {patchset} "
+                "--only-update-drivers "
+                "--glance-driver-version none "
+                "--keyfile {keyfile} "
+                "--run-tempest".format(devstack_up=DEVSTACK_FILE,
+                                       cluster_ip=cluster_ip,
+                                       node_ip=node_ip,
+                                       username=username,
+                                       password=password,
+                                       patchset=patchset,
+                                       keyfile=keyfile)
+            )
+            ssh = SSH(node_ip, username, password, keyfile=keyfile)
+        else:
+            exe(
+                "{devstack_up} {cluster_ip} {node_ip} {username} {password} "
+                "--patchset {patchset} "
+                "--reimage-client "
+                "--glance-driver-version none"
+                "--run-tempest ".format(devstack_up=DEVSTACK_FILE,
+                                        cluster_ip=cluster_ip,
+                                        node_ip=node_ip,
+                                        username=username,
+                                        password=password)
+            )
         # Upload logs
         ssh = SSH(node_ip, username, password, keyfile=keyfile)
         success, log_location, commit_id = self._upload_logs(
             ssh, patch_ref_name, post_failed=False)
         # Post results
         if self.upload:
-            self._post_results(success, log_location, commit_id)
+            self._post_results(ssh, success, log_location, commit_id)
         if success:
             tprint("SUCCESS: {}\nLOGS: {}".format(patchset, log_location))
         elif not success:
@@ -240,7 +266,7 @@ class ThirdParty(object):
         cmd = "tar -zxvf {} -C {} -m".format(
                 tempfilename, '/tmp/')
         dprint("Running: ", cmd)
-        dprint(subprocess.check_output(shlex.split(cmd)))
+        exe(cmd)
         create_indexes(tempfiledirectory, patch_ref_name)
         os.chdir(tempfiledirectory)
         with io.open('console.out.log') as f:
@@ -250,8 +276,7 @@ class ThirdParty(object):
         commit_id = match.group('commit_id')
         dprint("Commit ID: ", commit_id)
         try:
-            success = subprocess.check_output(
-                shlex.split("grep 'Failed: 0' console.out.log"))
+            success = exe("grep 'Failed: 0' console.out.log")
             success = True
             dprint("Found SUCCESS")
         except subprocess.CalledProcessError:
@@ -308,11 +333,11 @@ class ThirdParty(object):
         tprint("Deleted {} keys with a total size of {}".format(n, size))
 
 
-def watcher(key):
+def watcher(key, user):
 
     def _helper():
-        cmd = "ssh -i {} -p 29418 datera-ci@review.openstack.org " \
-               "\"gerrit stream-events\"".format(key)
+        cmd = "ssh -i {} -p 29418 {}@review.openstack.org " \
+               "\"gerrit stream-events\"".format(key, user)
         dprint("Cmd:", cmd)
         process = subprocess.Popen(
             shlex.split(cmd), stdout=subprocess.PIPE)
@@ -395,13 +420,11 @@ def runner(conf, third_party, upload):
 
 def reimage_datera(cluster="tlx222s", train="3.0.PROD", build="3.1.5"):
     # Runs against 3.1.0 for now
-    subprocess.check_call(shlex.split(
-        "curl -O http://releases.daterainc.com/{}/{}/"
-        "pxeboot-from-build.sh".format(train, build)))
-    subprocess.check_call(shlex.split("chmod +x pxeboot-from-build.sh"))
-    subprocess.check_call(shlex.split(
-        "./pxeboot-from-build.sh -c {} -v {} -b {}".format(
-            cluster, train, build)))
+    exe("curl -O http://releases.daterainc.com/{}/{}/"
+        "pxeboot-from-build.sh".format(train, build))
+    exe("chmod +x pxeboot-from-build.sh")
+    exe("./pxeboot-from-build.sh -c {} -v {} -b {}".format(
+        cluster, train, build))
 
 
 def parse_config_file(config_file):
@@ -415,6 +438,8 @@ def main():
     parser.add_argument('config')
     parser.add_argument('-u', '--upload', action='store_true')
     parser.add_argument('--upload-only', action='store_true')
+    parser.add_argument('--use-existing-devstack', action='store_true')
+    parser.add_argument('--single-run-patchset')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--show-all-events', action='store_true')
     args = parser.parse_args()
@@ -435,23 +460,39 @@ def main():
     third_party = ThirdParty(
         conf['project'],
         conf['host'],
-        conf['node_user'],
+        conf['username'],
         conf['port'],
         conf['ssh_key'],
         conf['ci_name'],
         conf['aws_key_id'],
         conf['aws_secret_key'],
         conf['remote_results_bucket'],
-        upload=False)
+        upload=args.upload,
+        use_existing_devstack=args.use_existing_devstack)
 
-    if args.upload_only:
+    if args.single_run_patchset:
+        third_party.run_ci_on_patch(conf['node_ip'],
+                                    conf['node_user'],
+                                    conf['node_password'],
+                                    conf['cluster_ip'],
+                                    args.single_run_patchset,
+                                    conf['cinder_driver_version'],
+                                    conf['glance_driver_version'],
+                                    conf['keyfile'])
+        return SUCCESS
+    elif args.upload_only:
         ssh = SSH(conf['node_ip'], conf['node_user'], conf['node_password'],
                   keyfile=conf['keyfile'])
+        head = ssh.exec_command('cd /opt/stack/cinder && git rev-parse HEAD')
+        patchset = third_party.gerrit.query(
+            '{head} --patch-sets --format json'.format(head=head)
+            )['patchSets'][-1]['ref']
+        patchset = patchset.replace("/", "-")
         success, log_location, commit_id = third_party._upload_logs(
-            ssh, conf['patchset'], post_failed=False)
-        third_party._post_results(success, log_location, commit_id)
+            ssh, patchset, post_failed=False)
+        third_party._post_results(ssh, success, log_location, commit_id)
     else:
-        watcher(conf['ssh_key'])
+        watcher(conf['ssh_key'], conf['username'])
         runner(conf, third_party, args.upload)
 
     try:

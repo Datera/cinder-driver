@@ -35,6 +35,8 @@ except NameError:
     pass
 
 
+SUCCESS = 0
+FAILURE = 1
 REBOOT_WAIT = 30 * 60
 DEVSTACK_WAIT = 300
 TEMPEST_WAIT = 300
@@ -116,6 +118,7 @@ class SSH(object):
         self.ssh.set_missing_host_key_policy(
             paramiko.AutoAddPolicy())
         # Normal username/password usage
+        print(self.ip, self.username, self.password, self.keyfile)
         self.ssh.connect(
             hostname=self.ip,
             username=self.username,
@@ -226,11 +229,22 @@ def _install_devstack(ssh, version):
                                "completed")
 
 
-def _update_drivers(ssh, mgmt_ip, cinder_version, glance_version):
+def _update_drivers(ssh, mgmt_ip, patchset, cinder_version, glance_version):
     # Install python sdk to ensure we're using latest version
     ssh.exec_command("sudo pip install dfs_sdk")
     # Install cinder driver
+    ssh.exec_command("rm -rf -- cinder-driver")
     ssh.exec_command("git clone {}".format(DAT_CINDER_URL))
+    ssh.exec_command("cd /opt/stack/cinder && git reset --hard")
+    if patchset != "master":
+        ssh.exec_command(
+            "cd /opt/stack/cinder && git fetch "
+            "https://review.opendev.org/openstack/cinder {patchset} "
+            "&& git checkout FETCH_HEAD".format(patchset=patchset))
+    else:
+        ssh.exec_command(
+            "cd /opt/stack/cinder && git checkout master")
+
     if cinder_version != "master":
         ssh.exec_command("cd cinder-driver && git checkout {}".format(
             cinder_version))
@@ -246,6 +260,7 @@ def _update_drivers(ssh, mgmt_ip, cinder_version, glance_version):
     if not install or not entryp:
         print("Could not find all glance install directories: [{}, {}]".format(
             install, entryp))
+    ssh.exec_command("rm -rf -- glance-driver")
     ssh.exec_command("git clone {}".format(DAT_GLANCE_URL))
     ssh.exec_command("cd glance-driver/src && sudo cp *.py {}".format(
         "/".join((install, "_drivers"))))
@@ -298,16 +313,17 @@ def _find_glance_dirs(ssh):
 
 def run_tempest(ssh):
     ssh.exec_command("cd /opt/stack/cinder && echo cinder_commit_id "
-                     "$(git rev-parse --short HEAD) > console.out.log")
+                     "$(git rev-parse HEAD) > "
+                     "/opt/stack/tempest/console.out.log")
     ssh.exec_command("cd /opt/stack/tempest && "
-                     "tox -e all -- volume | tee "
+                     "tox -e all -- volume | tee -a "
                      "console.out.log 2>/dev/null &")
     count = 0
     increment = 10
     while count <= TEMPEST_WAIT:
         try:
-            result = ssh.exec_command(
-                r"grep -oP '- Failed: \d+' console.out.log")
+            result = ssh.exec_command(r"grep -oP ' - Failed: \d+' "
+                                      "/opt/stack/tempest/console.out.log")
             return int(result.split(":")[-1])
             break
         except EnvironmentError:
@@ -359,22 +375,22 @@ def main(node_ip, username, password, cluster_ip, tenant, patchset,
 
     if only_update_drivers:
         if args.keyfile:
-            ssh = SSH(node_ip, 'ubuntu', None, keyfile=args.keyfile)
+            ssh = SSH(node_ip, username, password, keyfile=args.keyfile)
         else:
             ssh = SSH(node_ip, 'stack', 'stack')
         _update_drivers(
-            ssh, cluster_ip, cinder_driver_version,
+            ssh, cluster_ip, patchset, cinder_driver_version,
             glance_driver_version)
-        return 0
-    root_ssh = SSH(node_ip, username, password)
-    if reimage_client:
-        root_ssh = do_reimage_client(root_ssh)
-    setup_stack_user(root_ssh)
+    else:
+        root_ssh = SSH(node_ip, username, password)
+        if reimage_client:
+            root_ssh = do_reimage_client(root_ssh)
+        setup_stack_user(root_ssh)
 
-    ssh = SSH(node_ip, 'stack', 'stack')
-    install_devstack(ssh, cluster_ip, tenant, patchset, devstack_version)
-    _update_drivers(ssh, cluster_ip, cinder_driver_version,
-                    glance_driver_version)
+        ssh = SSH(node_ip, 'stack', 'stack')
+        install_devstack(ssh, cluster_ip, tenant, patchset, devstack_version)
+        _update_drivers(ssh, cluster_ip, patchset, cinder_driver_version,
+                        glance_driver_version)
     if run_tempest:
         result = run_tempest(ssh)
         if result == 0:
@@ -383,7 +399,7 @@ def main(node_ip, username, password, cluster_ip, tenant, patchset,
             print("Tempest Failed :(, Failures: {}".format(result))
     else:
         print('Devstack setup finished without error')
-    return 0
+    return SUCCESS
 
 
 if __name__ == '__main__':
