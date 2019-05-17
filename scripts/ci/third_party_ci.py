@@ -182,7 +182,8 @@ class ThirdParty(object):
                     commit_id))
         else:
             cmd = base_cmd.format(
-                "\"* {} {} : FAILURE \" {}".format(
+                "\"* {} {} : FAILURE \n You can rerun this CI by commenting "
+                "run-Datera\" {}".format(
                     self.gerrit.ci_name,
                     log_location,
                     commit_id))
@@ -197,7 +198,7 @@ class ThirdParty(object):
                         patchset,
                         cinder_driver_version,
                         glance_driver_version,
-                        keyfile=None):
+                        node_keyfile=None):
         """
         This will actually run the CI logic.  If post_failed is set to `False`,
         it will try again if it detects failure in the results.  This should
@@ -219,23 +220,24 @@ class ThirdParty(object):
                                        username=username,
                                        password=password,
                                        patchset=patchset,
-                                       keyfile=keyfile)
+                                       keyfile=node_keyfile)
             )
-            ssh = SSH(node_ip, username, password, keyfile=keyfile)
+            ssh = SSH(node_ip, username, password, keyfile=node_keyfile)
         else:
             exe(
                 "{devstack_up} {cluster_ip} {node_ip} {username} {password} "
                 "--patchset {patchset} "
                 "--reimage-client "
-                "--glance-driver-version none"
+                "--glance-driver-version none "
                 "--run-tempest ".format(devstack_up=DEVSTACK_FILE,
                                         cluster_ip=cluster_ip,
                                         node_ip=node_ip,
                                         username=username,
-                                        password=password)
+                                        password=password,
+                                        patchset=patchset)
             )
         # Upload logs
-        ssh = SSH(node_ip, username, password, keyfile=keyfile)
+        ssh = SSH(node_ip, username, password, keyfile=node_keyfile)
         success, log_location, commit_id = self._upload_logs(
             ssh, patch_ref_name, post_failed=False)
         # Post results
@@ -401,11 +403,13 @@ def runner(conf, third_party, upload):
                 third_party.run_ci_on_patch(
                         # Read these from environment variables
                         conf['node_ip'],
+                        conf['node_user'],
                         conf['node_password'],
                         conf['cluster_ip'],
-                        conf['patchset'],
+                        patchref,
                         conf['cinder_driver_version'],
-                        conf['glance_driver_version'])
+                        conf['glance_driver_version'],
+                        keyfile=conf['keyfile'])
             except Exception:
                 print("Exception occurred during CI run:")
                 traceback.print_exc()
@@ -462,7 +466,7 @@ def main():
         conf['host'],
         conf['username'],
         conf['port'],
-        conf['ssh_key'],
+        conf['gerrit_key'],
         conf['ci_name'],
         conf['aws_key_id'],
         conf['aws_secret_key'],
@@ -491,8 +495,11 @@ def main():
         success, log_location, commit_id = third_party._upload_logs(
             ssh, patchset, post_failed=False)
         third_party._post_results(ssh, success, log_location, commit_id)
+        return SUCCESS
     else:
-        watcher(conf['ssh_key'], conf['username'])
+        if os.path.exists(EXIT):
+            os.unlink(EXIT)
+        watcher(conf['gerrit_key'], conf['username'])
         runner(conf, third_party, args.upload)
 
     try:

@@ -418,6 +418,8 @@ if __name__ == '__main__':
     parser.add_argument('--reimage-client', action='store_true')
     parser.add_argument('--only-update-drivers', action='store_true')
     args = parser.parse_args()
+    if args.password in {"", "none", "None"}:
+        args.password = None
     sys.exit(main(
         args.node_ip,
         args.username,
