@@ -7,6 +7,7 @@ import io
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import threading
@@ -290,6 +291,11 @@ class ThirdParty(object):
             success = False
             dprint("Found FAILURE")
         os.chdir('..')
+
+        # cleanup artifacts
+        shutil.rmtree(tempfiledirectory)
+        os.remove(tempfilename)
+
         self._boto_up_data(patch_ref_name)
         log_location = "".join((BASE_URL, patch_ref_name, "/index.html"))
         return success, log_location, commit_id
@@ -387,7 +393,7 @@ def watcher(key, user):
 def runner(conf, third_party, upload):
 
     def _helper():
-        count = 0
+        # count = 0
         while True:
             patchref = None
             try:
@@ -399,10 +405,10 @@ def runner(conf, third_party, upload):
                     os.unlink(EXIT)
                     break
                 continue
-            count += 1
-            # Every 10 tests we'll reimage the box
-            if count % 10 == 0:
-                reimage_datera()
+            # count += 1
+            # # Every 10 tests we'll reimage the box
+            # if count % 10 == 0:
+            #     reimage_datera()
             dprint("Starting CI on: {}".format(patchref))
             try:
                 third_party.run_ci_on_patch(
