@@ -409,7 +409,7 @@ def runner(conf, third_party, upload):
                         patchref,
                         conf['cinder_driver_version'],
                         conf['glance_driver_version'],
-                        keyfile=conf['keyfile'])
+                        node_keyfile=conf['keyfile'])
             except Exception:
                 print("Exception occurred during CI run:")
                 traceback.print_exc()
@@ -482,7 +482,7 @@ def main():
                                     args.single_run_patchset,
                                     conf['cinder_driver_version'],
                                     conf['glance_driver_version'],
-                                    conf['keyfile'])
+                                    node_keyfile=conf['keyfile'])
         return SUCCESS
     elif args.upload_only:
         ssh = SSH(conf['node_ip'], conf['node_user'], conf['node_password'],
