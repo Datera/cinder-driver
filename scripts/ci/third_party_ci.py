@@ -23,6 +23,11 @@ import ruamel.yaml as yaml
 import simplejson as json
 from six.moves.queue import Queue, Empty
 
+try:
+    input = raw_input
+except NameError:
+    pass
+
 PATCH_QUEUE = Queue()
 
 UPLOAD_FILE = os.path.join(
@@ -502,11 +507,14 @@ def main():
         watcher(conf['gerrit_key'], conf['username'])
         runner(conf, third_party, args.upload)
 
-    try:
-        while True:
-            time.sleep(0.2)
-    except KeyboardInterrupt:
-        io.open(EXIT, 'w+').close()
+    while True:
+        try:
+            while True:
+                time.sleep(0.2)
+        except KeyboardInterrupt:
+            if input("Do you really want to quit? [Y/n]: ") in {"Y", "y"}:
+                io.open(EXIT, 'w+').close()
+                break
 
     return SUCCESS
 
