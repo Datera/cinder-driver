@@ -212,6 +212,7 @@ class ThirdParty(object):
         """
         dprint("Running against: ", patchset)
         patch_ref_name = patchset.replace("/", "-")
+        workdir = os.getcwd()
         # Setup Devstack and run tempest
         if self.use_existing_devstack:
             exe(
@@ -253,6 +254,8 @@ class ThirdParty(object):
             tprint("SUCCESS: {}\nLOGS: {}".format(patchset, log_location))
         elif not success:
             tprint("FAIL: {}\nLOGS: {}".format(patchset, log_location))
+        # Ensure we're back where we need to be
+        os.chdir(workdir)
 
     def _upload_logs(self,
                      host_ssh,
