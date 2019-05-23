@@ -166,7 +166,7 @@ class ThirdParty(object):
 
     def __init__(self, project, ghost, guser, gport, gkeyfile, ci_name,
                  aws_key_id, aws_secret_key, remote_bucket, upload=False,
-                 use_existing_devstack=False):
+                 use_existing_devstack=False, nocleanup=False):
         self.project = project
         self.gerrit = Gerrit(ghost, guser, port=gport, keyfile=gkeyfile)
         self.gerrit.ci_name = ci_name
@@ -175,6 +175,7 @@ class ThirdParty(object):
         self.aws_secret_key = aws_secret_key
         self.remote_results_bucket = remote_bucket
         self.use_existing_devstack = use_existing_devstack
+        self.nocleanup = nocleanup
 
     def _post_results(self, ssh, success, log_location, commit_id):
         base_cmd = ("ssh -i {} -p 29418 {}@review.openstack.org "
@@ -295,12 +296,12 @@ class ThirdParty(object):
             dprint("Found FAILURE")
         os.chdir('..')
 
-        # cleanup artifacts
-        shutil.rmtree(tempfiledirectory)
-        os.remove(tempfilename)
-
         self._boto_up_data(patch_ref_name)
         log_location = "".join((BASE_URL, patch_ref_name, "/index.html"))
+        # cleanup artifacts
+        if not self.nocleanup:
+            shutil.rmtree(tempfiledirectory)
+            os.remove(tempfilename)
         return success, log_location, commit_id
 
     def _boto_up_data(self, data):
@@ -460,6 +461,7 @@ def main():
     parser.add_argument('--single-run-patchset')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--show-all-events', action='store_true')
+    parser.add_argument('--no-cleanup', action='store_true')
     args = parser.parse_args()
 
     if args.debug:
@@ -486,7 +488,8 @@ def main():
         conf['aws_secret_key'],
         conf['remote_results_bucket'],
         upload=args.upload,
-        use_existing_devstack=args.use_existing_devstack)
+        use_existing_devstack=args.use_existing_devstack,
+        nocleanup=args.no_cleanup)
 
     if args.single_run_patchset:
         third_party.run_ci_on_patch(conf['node_ip'],
