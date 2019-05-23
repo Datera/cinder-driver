@@ -248,6 +248,7 @@ class ThirdParty(object):
         ssh = SSH(node_ip, username, password, keyfile=node_keyfile)
         success, log_location, commit_id = self._upload_logs(
             ssh, patch_ref_name, post_failed=False)
+        os.chdir(workdir)
         # Post results
         if self.upload:
             self._post_results(ssh, success, log_location, commit_id)
