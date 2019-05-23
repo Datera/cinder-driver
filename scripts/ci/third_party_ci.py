@@ -365,23 +365,27 @@ def watcher(key, user):
                 author = event['author'].get('username')
                 project = event['change']['project']
                 patchSet = event['patchSet']['ref']
+                branch = event['change']['branch']
                 if ALL_EVENTS:
                     print("project: " + project,
                           "author: " + author,
                           "patchSet: " + patchSet,
+                          "branch: " + branch,
                           "comment: " + comment[:25].replace(
                               "\n", " "), sep="|")
                 if 'Verified+2' in comment or 'Verified+1' in comment:
                     dprint("project: " + project,
                            "author: " + author,
                            "patchSet: " + patchSet,
+                           "branch: " + branch,
                            "comment: " + comment[:25].replace(
                                "\n", " "), sep="|")
                 if 'run-Datera' in comment:
                     tprint("Found manual patchset: ", patchSet)
                     PATCH_QUEUE.put(patchSet)
                 if (author and author.lower() == "zuul" and
-                        project == "openstack/cinder"):
+                        project == "openstack/cinder" and
+                        branch == "master"):
                     if 'Verified+2' in comment or 'Verified+1' in comment:
                         tprint("###############")
                         tprint("Found patchset: ", patchSet)
