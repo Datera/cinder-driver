@@ -195,7 +195,7 @@ class ThirdParty(object):
                     log_location,
                     commit_id))
         dprint("Posting gerrit results:\n{}".format(cmd))
-        ssh.exec_command(cmd)
+        exe(cmd)
 
     def run_ci_on_patch(self,
                         node_ip,
