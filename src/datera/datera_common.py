@@ -322,6 +322,28 @@ def cvol_to_dvol(driver, resource, tenant=None):
     return vol
 
 
+def _version_to_int(ver):
+    # Using a factor of 100 per digit so up to 100 versions are supported
+    # per major/minor/patch/subpatch digit in this calculation
+    # Example:
+    # In [2]: _version_to_int("3.3.0.0")
+    # Out[2]: 303000000
+    # In [3]: _version_to_int("2.2.7.1")
+    # Out[3]: 202070100
+    VERSION_DIGITS = 4
+    factor = pow(10, VERSION_DIGITS * 2)
+    div = pow(10, 2)
+    val = 0
+    for c in ver.split("."):
+        val += int(int(c) * factor)
+        factor /= div
+    return val
+
+
+def dat_version_gte(version_a, version_b):
+    return _version_to_int(version_a) >= _version_to_int(version_b)
+
+
 def register_driver(driver):
     for func in [_get_volume_type_obj,
                  _get_policies_for_resource,

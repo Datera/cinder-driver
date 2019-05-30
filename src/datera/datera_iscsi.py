@@ -144,6 +144,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         self.image_cache = self.configuration.datera_enable_image_cache
         self.image_type = self.configuration.datera_image_cache_volume_type_id
         self.thread_local = threading.local()
+        self.datera_version = None
         self.apiv = None
         self.api = None
         self.filterf = self.get_filter_function()
@@ -617,12 +618,24 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         self._set_property(
             properties,
             "DF:placement_mode",
-            "Datera Volume Placement",
-            _("'single_flash' for single-flash-replica placement, "
+            "Datera Volume Placement Mode (deprecated)",
+            _("'DEPRECATED: PLEASE USE 'placement_policy' on 3.3.X+ versions "
+              " of the Datera product.  'single_flash' for "
+              "single-flash-replica placement, "
               "'all_flash' for all-flash-replica placement, "
               "'hybrid' for hybrid placement"),
             "string",
             default=self.defaults.get('placement_mode', 'hybrid'))
+
+        self._set_property(
+            properties,
+            "DF:placement_policy",
+            "Datera Volume Placement Policy",
+            _("Valid path to a media placement policy.  Example: "
+              "/placement_policies/all-flash"),
+            "string",
+            default=self.defaults.get('placement_policy',
+                                      'default'))
 
         self._set_property(
             properties,

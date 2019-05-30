@@ -59,6 +59,7 @@ class DateraApi(object):
         template = policies['template']
         placement = policies['placement_mode']
         ip_pool = policies['ip_pool']
+        ppolicy = policies['placement_policy']
 
         name = datc.get_name(volume)
 
@@ -96,7 +97,6 @@ class DateraApi(object):
                                 {
                                     'name': volume_name,
                                     'size': volume['size'],
-                                    'placement_mode': placement,
                                     'replica_count': num_replicas,
                                     'snapshot_policies': [
                                     ]
@@ -105,6 +105,12 @@ class DateraApi(object):
                         }
                     ]
                 })
+            create_vol = app_params['storage_instances'][0]['volumes'][0]
+            if datc.dat_version_gte(self.datera_version, '3.3.0.0'):
+                create_vol['placement_policy'] = {
+                    'path': '/placement_policies/{}'.format(ppolicy)}
+            else:
+                create_vol['placement_mode'] = placement
 
         tenant = self.create_tenant(volume['project_id'])
         self.api.app_instances.create(tenant=tenant, **app_params)
@@ -496,12 +502,22 @@ class DateraApi(object):
                             'placement_mode': new_pol['placement_mode'],
                             'replica_count': new_pol['replica_count'],
                         })
+                    if datc.dat_version_gte(self.datera_version, '3.3.0.0'):
+                        ppolicy = {'path': '/placement_policies/{}'.format(
+                            new_pol.get('placement_policy'))}
+                        vol_params['placement_policy'] = ppolicy
                     dvol.set(tenant=tenant, **vol_params)
-            elif new_pol['placement_mode'] != old_pol['placement_mode']:
+            elif (new_pol['placement_mode'] != old_pol[
+                    'placement_mode'] or new_pol[
+                        'placement_policy'] != old_pol['placement_policy']):
                 vol_params = (
                     {
                         'placement_mode': new_pol['placement_mode'],
                     })
+                if datc.dat_version_gte(self.datera_version, '3.3.0.0'):
+                    ppolicy = {'path': '/placement_policies/{}'.format(
+                        new_pol.get('placement_policy'))}
+                    vol_params['placement_policy'] = ppolicy
                 dvol.set(tenant=tenant, **vol_params)
             self._add_vol_meta_2_2(volume)
             return True
@@ -953,6 +969,7 @@ class DateraApi(object):
                 LOG.debug("Updating cluster stats info.")
 
                 results = self.api.system.get()
+                self.datera_version = results.sw_version
 
                 if 'uuid' not in results:
                     LOG.error(
