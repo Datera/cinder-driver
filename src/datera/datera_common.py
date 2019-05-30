@@ -14,10 +14,11 @@
 #    under the License.
 
 import functools
+import random
 import re
+import string
 import time
 import types
-import string
 import uuid
 
 import dfs_sdk
@@ -269,6 +270,14 @@ def _format_tenant(tenant):
     elif tenant and ('/root' not in tenant and 'root' not in tenant):
         return "/" + "/".join(('root', tenant)).strip('/')
     return tenant
+
+
+def get_ip_pool(policies):
+    ip_pool = policies['ip_pool']
+    if ',' in ip_pool:
+        ip_pools = ip_pool.split(',')
+        ip_pool = random.choice(ip_pools)
+    return ip_pool
 
 
 def create_tenant(driver, project_id):

@@ -93,7 +93,7 @@ d_opts = [
                      "prevent accidental overusage.  Options are specified "
                      "via the following format, WITHOUT ANY 'DF:' PREFIX: "
                      "'datera_volume_type_defaults="
-                     "iops_per_gb:100,bandwidth_per_gb:200...etc'.")
+                     "iops_per_gb:100,bandwidth_per_gb:200...etc'."),
 ]
 
 
@@ -663,7 +663,12 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
             properties,
             "DF:ip_pool",
             "Datera IP Pool",
-            _("Specifies IP pool to use for volume"),
+            _("Specifies IP pool to use for volume.  If provided string "
+              "contains commas, it will be split on the commas and each "
+              "substring will be uses as a separate IP pool and the volume's "
+              "IP pool will be chosen randomly from the list.  Example: "
+              "'my-ip-pool1,my-ip-pool2,my-ip-pool3', next attach "
+              "my-ip-pool2 was chosen randomly as the volume IP pool"),
             "string",
             default=self.defaults.get('ip_pool', 'default'))
 

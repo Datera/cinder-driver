@@ -58,8 +58,8 @@ class DateraApi(object):
         volume_name = 'volume-1'
         template = policies['template']
         placement = policies['placement_mode']
-        ip_pool = policies['ip_pool']
         ppolicy = policies['placement_policy']
+        ip_pool = datc.get_ip_pool(policies)
 
         name = datc.get_name(volume)
 
@@ -261,9 +261,10 @@ class DateraApi(object):
         policies = self._get_policies_for_resource(volume)
         if connector and connector.get('ip'):
             # Case where volume_type has non default IP Pool info
-            if policies['ip_pool'] != 'default':
+            ip_pool = datc.get_ip_pool(policies)
+            if ip_pool != 'default':
                 initiator_ip_pool_path = self.api.access_network_ip_pools.get(
-                    policies['ip_pool']).path
+                    ip_pool).path
             # Fallback to trying reasonable IP based guess
             else:
                 initiator_ip_pool_path = self._get_ip_pool_for_string_ip_2_2(
@@ -497,6 +498,17 @@ class DateraApi(object):
             if (new_pol['replica_count'] != old_pol['replica_count'] or
                     new_pol['ip_pool'] != old_pol['ip_pool']):
                 with self._offline_flip_2_2(volume):
+                    # ip_pool is Storage Instance level
+                    ai = self.cvol_to_ai(volume, tenant=tenant)
+                    si = ai.storage_instances.list(tenant=tenant)[0]
+                    ip_pool = datc.get_ip_pool(new_pol)
+                    si_params = (
+                        {
+                            'ip_pool': {'path': ('/access_network_ip_pools/'
+                                                 '{}'.format(ip_pool))},
+                        })
+                    si.set(tenant=tenant, **si_params)
+                    # placement_mode and replica_count are Volume level
                     vol_params = (
                         {
                             'placement_mode': new_pol['placement_mode'],
