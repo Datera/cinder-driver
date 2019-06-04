@@ -177,10 +177,6 @@ Volume Driver Cinder.conf Options
    * - ``datera_image_cache_volume_type_id`` = ``None``
      - (String) Cinder volume type id to use for cached images
 
-
-
-
-
 ----------------------
 Volume-Type ExtraSpecs
 ----------------------
@@ -221,6 +217,28 @@ Volume-Type ExtraSpecs
      - (Int) IOPS per GB of data allocated for the volume.  If this value exceeds the total_max_iops value, the total_max_iops will be used instead
    * - ``DF:bandwidth_per_gb`` = ``0``
      - (Int) Bandwidth (KB/s) per GB of data allocated for the volume.  If this value exceeds the total_max_bandwidth value, the total_max_bandwidth will be used instead
+
+------------------------------------
+Collecting Logs for OpenStack Cinder
+------------------------------------
+
+If for some reason there is a problem with the OpenStack Cinder driver.  You
+MUST collect the cinder-volume service logs.  Without logs, debugging issues
+is significantly more difficult.
+
+The location of the cinder-volume logs varies between installations but here
+are a few places to check:
+
+- /var/log/cinder
+- /opt/stack/cinder
+- journalctl -u cinder-volume
+
+These places are usually only valid on the controller node running the
+cinder-volume service
+
+If they're not in any of the above places you will have to look into where
+the service is saving logs.  Often they will be inside a container for the
+service.
 
 ------------------------------------
 Datera Cinder Backup Version History
@@ -307,4 +325,3 @@ the following to manually specify the Datera EDF backup driver:
 .. code-block:: bash
 
     openstack volume backup create cassandra1 --name datera_cassandra1_backup
-
