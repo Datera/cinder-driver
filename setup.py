@@ -50,6 +50,7 @@ setup(
     packages=['datera_cinder'],
     package_dir={'': 'src'},
     install_requires=[
+        'dfs_sdk',
     ],
     url='https://github.com/Datera/cinder-driver/',
     download_url='https://github.com/Datera/cinder-driver/tarball/v{}'.format(

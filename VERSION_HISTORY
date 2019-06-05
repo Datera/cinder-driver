@@ -67,3 +67,4 @@
 2018.11.14.0 - Bugfixes for v2.1 API support and unicode character support
 2019.1.24.0 - Python-SDK requirements update, README updates
 2019.2.25.0 - Scalability fixes and utility script updates
+2019.6.4.1 - Added Pypi packaging installation support

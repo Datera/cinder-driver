@@ -105,7 +105,7 @@ CONF.register_opts(d_opts)
 @six.add_metaclass(utils.TraceWrapperWithABCMetaclass)
 class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
 
-    VERSION = '2019.2.25.0'
+    VERSION = '2019.6.4.1'
 
     CI_WIKI_NAME = "datera-ci"
 
