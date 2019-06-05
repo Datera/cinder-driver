@@ -6,6 +6,27 @@ Datera Cinder Repository
 Datera Cinder Volume Driver Installation
 ----------------------------------------
 
+Via Pip
+
+.. code-block::
+
+    1. Run ``pip install datera_cinder`` in the virtualenv for the cinder-volume service
+    2. Modify ``/etc/cinder/cinder.conf``
+      * Under [DEFAULT]
+        * ``default_volume_type = datera``
+        * ``enabled_backends = datera``
+        * ``debug = True``
+      * Under [datera]
+        * ``volume_driver = datera_cinder.datera_iscsi.DateraDriver``
+        * ``san_ip = <datera_mgmt_ip>``
+        * ``san_login = <datera_username>``
+        * ``san_password = <datera_password>``
+        * ``volume_backend_name = datera``
+        * ``datera_tenant_id = <datera_tenant>``
+    3. Restart Cinder ``service cinder-volume restart``
+
+Via Source
+
 .. code-block::
 
     1. Clone Repository ``git clone http://github.com/Datera/cinder-driver``
@@ -23,7 +44,7 @@ Datera Cinder Volume Driver Installation
         * ``san_password = <datera_password>``
         * ``volume_backend_name = datera``
         * ``datera_tenant_id = <datera_tenant>``
-    4. Restart Cinder ``service cinder-volume restart``
+    5. Restart Cinder ``service cinder-volume restart``
 
 
 If you get an error like:
