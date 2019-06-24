@@ -60,6 +60,81 @@ Then you can install the Python-SDK manually via
     $ pip install -U dfs_sdk
 
 
+-----
+Usage
+-----
+
+The Datera Cinder Volume Driver once installed can be used to provision Cinder
+block volumes.  There are several ways to do this in OpenStack, but a common
+way is detailed below.
+
+Volume Creation (default volume type, size 5GB):
+
+.. code-block::
+
+    $ openstack volume create myvolume --size 5
+
+Volume Deletion:
+
+.. code-block::
+
+    $ openstack volume delete myvolume
+
+Volume Type Creation (volume replicas set to 2):
+
+.. code-block::
+
+    $ openstack volume type create mytype --property volume_backend_name=datera --property DF:replica_count=2
+
+Volume Creation (Non-default type, size 10GB)
+
+.. code-block::
+
+    $ openstack volume create myvolume --size 10 --type mytype
+
+Volume Snapshot Creation For Existing Volume myvolume
+
+.. code-block::
+
+    $ openstack volume snapshot create mysnap --volume myvolume
+
+
+Volume Snapshot Deletion
+
+.. code-block::
+
+    $ openstack volume snapshot delete mysnap
+
+
+Volume Creation From Existing Snapshot mysnap (specified size MUST be >= snapshot size, otherwise this fails)
+
+.. code-block::
+
+    $ openstack volume create myvolume2 --size 10 --snapshot mysnap
+
+
+Volume Creation From Existing Volume myvolume (specified size MUST be >= original volume size, otherwise this fails)
+
+.. code-block::
+
+    $ openstack volume create myvolume2 --size 10 --volume mysnap
+
+
+Retype A Datera Volume (The retype command is not supported in OpenStackClient, so CinderClient must be used)
+
+.. code-block::
+
+    $ openstack volume type create mynewtype --property volume_backend_name=datera --property DF:replica_count=4
+    $ cinder retype myvolume mynewtype --migration-policy never
+
+
+Migrate A Volume From Ceph To Datera
+
+.. code-block::
+
+    $ openstack volume type create mydateratype --property volume_backend_name=datera --property DF:replica_count=4
+    $ cinder retype mycephvolume mydateratype --migration-policy on-demand
+
 ------------------------------------
 Datera Volume Driver Version History
 ------------------------------------
