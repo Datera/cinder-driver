@@ -57,17 +57,6 @@ API_TIMEOUT = 20
 
 VALID_CHARS = set(string.ascii_letters + string.digits + "-_.")
 
-###############
-# METADATA KEYS
-###############
-
-M_TYPE = 'cinder_volume_type'
-M_CALL = 'cinder_calls'
-M_CLONE = 'cinder_clone_from'
-M_MANAGED = 'cinder_managed'
-
-M_KEYS = [M_TYPE, M_CALL, M_CLONE, M_MANAGED]
-
 
 def get_name(resource):
     dn = resource.get('display_name')
