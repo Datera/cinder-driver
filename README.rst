@@ -336,6 +336,27 @@ If they're not in any of the above places you will have to look into where
 the service is saving logs.  Often they will be inside a container for the
 service.
 
+-------------------------
+Building the PyPI package
+-------------------------
+
+Run the following to build the packages (if uploading, ensure the version
+is incremented in constants.py)
+```bash
+        python setup.py sdist bdist_wheel
+```
+
+Then to upload the package to PyPI (this step requires valid PyPI credentials)
+```bash
+        twine upload dist/*
+```
+
+You can perform a test upload by running.  This requires credentials on the
+test PyPI server
+```bash
+        twine upload --repository-url https://test.pypi.org/legacy/ dist/*
+```
+
 ------------------------------------
 Datera Cinder Backup Version History
 ------------------------------------
