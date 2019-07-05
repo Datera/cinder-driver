@@ -85,6 +85,17 @@ Show only requests without replies
 
 Show Volume Attach/Detach (useful for mapping volume to instance)
     $ ./sreq.py /your/cinder-volume/log/location.log --attach-detach
+
+Get the slowest 10 requests
+    $ ./sreq.py /your/cinder-volume/log/location.log
+--pretty \
+--sort RESDELTA \
+--limit 10
+
+Get the average duration of all requests
+    $ ./sreq.py /your/cinder-volume/log/location.log
+--pretty \
+| grep RESDELTA | awk '{ total += $3; count++ } END { print total/count }'
 """.format(CACHE)
 
 DREQ = re.compile(r"""^(?P<time>\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(\.\d{3}|Z)).*?
