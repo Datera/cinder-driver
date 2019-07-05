@@ -180,6 +180,8 @@ AD_VALS = {"TIME": 0,
 
 
 def _sort_helper(sort, x):
+    if sort == "RESDELTA":
+        return float(x[TUP_VALS[sort.upper()]])
     try:
         return x[TUP_VALS[sort.upper()]]
     except IndexError:
