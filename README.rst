@@ -59,7 +59,7 @@ Then you can install the Python-SDK manually via
 
     $ pip install -U dfs_sdk
 
-Note: If you are using an Openstack distribution which runs the control plane services within containers such as LXC, you can follow the example below.
+Here is an example to follow:
 
 .. code-block::
 
