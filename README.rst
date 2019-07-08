@@ -59,6 +59,25 @@ Then you can install the Python-SDK manually via
 
     $ pip install -U dfs_sdk
 
+Note: If you are using an Openstack distribution which runs the control plane services within containers such as LXC, you can follow the example below.
+
+.. code-block::
+
+    $ git clone http://github.com/Datera/cinder-driver
+    $ cd cinder-driver/src/datera
+    $ yes | cp -ir *.py  /openstack/venvs/cinder-19.0.0.0rc2.dev43/lib/python2.7/site-packages/cinder/volume/drivers/datera
+    $ service cinder-volume restart
+    $ source /openstack/venvs/cinder-19.0.0.0rc2.dev43/bin/activate
+    (cinder-19.0.0.0rc2.dev43) $ pip install -U dfs_sdk
+    (cinder-19.0.0.0rc2.dev43) $ pip freeze | grep sdk
+    dfs-sdk==1.2.24
+    openstacksdk==0.27.0
+    (cinder-19.0.0.0rc2.dev43) $ deactivate
+    $ ls -l /openstack/venvs/cinder-19.0.0.0rc2.dev43/lib/python2.7/site-packages | grep dfs 
+    drwxr-xr-x  5 root root   4096 May 30 20:21 dfs_sdk
+    drwxr-xr-x  2 root root     87 May 30 20:21 dfs_sdk-1.2.22.dist-info
+    $
+
 
 -----
 Usage
