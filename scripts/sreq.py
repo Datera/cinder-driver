@@ -20,6 +20,28 @@ except ImportError:
     text_histogram = None
 
 """
+See Requests
+------------
+
+This script started out as a fun idea I had one evening where I thought it
+would be cool to be able to pull out all the API requests from a busy Cinder
+Volume log and then perform actions on them such as filtering or sorting.
+
+It sort of ballooned from there and as you'll see from the code below, it
+kind of grew organically without any real direction.  I apologize for some of
+the code idioms you'll find in this as I was having fun writing it and that's
+ALWAYS a bad sign.
+
+I had intensions of factoring this out into several different scripts meant for
+different ecosystem logging plugins, but eventually just settled on a common
+logging format that this parses using regexes.  Unfortunately that means any
+changes to the Python-SDK, Golang SDK or Powershell SDK connection libraries
+can potentially break this.
+
+Of all the stuff I've written for ecosystem, this has been the most helpful
+for diagnosing customer issues quickly as it lets me instantly construct a
+history of the requests to the Datera backend.
+
 VERSION HISTORY:
     1.0.0 -- Initial sreq.py version
     1.0.1 -- Addition of timestamp filtering
