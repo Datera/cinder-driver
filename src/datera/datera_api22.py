@@ -271,7 +271,8 @@ class DateraApi(object):
                     connector['ip'], tenant)
 
             ip_pool_data = {'ip_pool': {'path': initiator_ip_pool_path}}
-            si.set(tenant=tenant, **ip_pool_data)
+            if not ai.app_template["path"]:
+                si.set(tenant=tenant, **ip_pool_data)
         data = {
             'admin_state': 'online'
         }
