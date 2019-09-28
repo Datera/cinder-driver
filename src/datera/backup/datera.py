@@ -36,25 +36,28 @@ Multiplexing:
 import contextlib
 import hashlib
 import os
-import six
 import shlex
+import six
 import struct
 import subprocess
 import time
 import uuid
 
 import eventlet
+
 from eventlet.green import threading
 
 from oslo_concurrency import processutils as putils
 from oslo_config import cfg
 from oslo_log import log as logging
-from oslo_utils import excutils, units, importutils
+from oslo_utils import excutils
+from oslo_utils import importutils
+from oslo_utils import units
 
 from cinder.backup import chunkeddriver
 from cinder import exception
-from cinder import interface
 from cinder.i18n import _
+from cinder import interface
 from cinder import utils
 
 from os_brick import exception as brick_exception
@@ -230,10 +233,10 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
             self.datera_api_token = results['key']
         except exception.NotAuthorized:
             with excutils.save_and_reraise_exception():
-                LOG.error(_('Logging into the Datera cluster failed. Please '
-                            'check your username and password set in the '
-                            'cinder.conf and start the cinder-volume '
-                            'service again.'))
+                LOG.error('Logging into the Datera cluster failed. Please '
+                          'check your username and password set in the '
+                          'cinder.conf and start the cinder-volume '
+                          'service again.')
 
     def _check_options(self):
         req_opts = ('backup_datera_san_ip',
@@ -242,7 +245,7 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
         no_opts = filter(lambda opt: not getattr(CONF, opt, None), req_opts)
         if no_opts:
             raise exception.InvalidInput(
-                reason=_('Missing required opts %s') % no_opts)
+                reason =_('Missing required opts %s') % no_opts)
 
     def _create_volume(self, name, size):
         tenant = self.tenant_id
@@ -292,7 +295,7 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
                 datc.URL_TEMPLATES['ai_inst']().format(name), 'delete',
                 api_version='2.1', tenant=self.tenant_id)
         except (exception.DateraAPIException, exception.NotFound):
-            LOG.debug(_("Couldn't find volume: %s"), name)
+            LOG.debug("Couldn't find volume: {}".format(name))
 
     def _volume_exists(self, bname):
         try:
@@ -325,7 +328,7 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
             url, method='put', body=data, api_version='2.1',
             tenant=self.tenant_id)
         # Trying a sleep here to give the snapshot a moment to restore
-        LOG.debug(_("Sleeping for 5 to give the snapshot a chance"))
+        LOG.debug("Sleeping for 5s to give the snapshot a chance")
         eventlet.sleep(5)
 
     def _list_snapshots(self, bname):
@@ -347,7 +350,7 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
                     SI_NAME, VOL_NAME).format(bname) + '/snapshots/{'
                     '}'.format(timestamp), 'delete', api_version='2.1')
                 return
-        LOG.debug(_('Did not find snapshot %s to delete'), timestamp)
+        LOG.debug('Did not find snapshot {} to delete'.format(timestamp))
 
     def _get_sis_iqn_portal(self, bname):
         iqn = None
@@ -388,7 +391,7 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
                                                    method="get",
                                                    api_version='2.1',
                                                    tenant=self.tenant_id)[
-                                                           'data']
+                'data']
             data = {}
             data['initiators'] = existing_acl['initiators']
             data['initiators'].append({"path": initiator_path})
@@ -474,8 +477,8 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
                 except brick_exception.FailedISCSITargetPortalLogin:
                     retries -= 1
                     if not retries:
-                        LOG.error(_("Could not log into portal before end of "
-                                    "polling period"))
+                        LOG.error("Could not log into portal before end of "
+                                  "polling period")
                         raise
                     LOG.debug("Failed to login to portal, retrying")
                     eventlet.sleep(2)
@@ -656,8 +659,7 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
         return driver.import_record(backup, driver_info)
 
     def _generate_object_name_prefix(self, backup):
-        """Generates a Datera EDF backup object name prefix.
-        """
+        """Generates a Datera EDF backup object name prefix."""
         driver = self._get_driver()
         if not driver:
             return PREFIX
@@ -683,8 +685,10 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
 
 class DateraObjectWriter(object):
     def __init__(self, container, object_name, driver):
-        LOG.debug(_("Object writer. container: %s, object_name: %s"
-                    % (container, object_name)))
+        LOG.debug("Object writer. container: %(container)s, "
+                  "object_name: %(object)s",
+                  {'container': container,
+                   'object': object_name})
         self.container = container
         self.object_name = object_name
         self.driver = driver
@@ -706,8 +710,10 @@ class DateraObjectWriter(object):
         self.data = data
 
     def close(self):
-        LOG.debug(_("Writing backup. Container: %s, object_name: %s" %
-                  (self.container, self.object_name)))
+        LOG.debug("Writing backup.Container: %(container)s, "
+                  "object_name: %(object)s",
+                  {'container': self.container,
+                   'object': self.object_name})
         with self.driver._connect_target(self.container) as device_path:
             # Write backup data
             self.driver._execute("chmod o+w {}".format(device_path))
@@ -722,10 +728,12 @@ class DateraObjectWriter(object):
             l = len(self.data)
             h = hashlib.md5(self.data).hexdigest()
             os.write(f, struct.pack(PACK, n, l, h))
-            LOG.debug(_("Writing Headers.\n"
-                        "Number: %s\n"
-                        "Length: %s\n"
-                        "MD5: %s" % (n, len(self.data), h)))
+            LOG.debug("Writing Headers.\n Number: %(number)s\n"
+                      "Length: %(length)s\n"
+                      "MD5: %(md5)s",
+                      {'number': n,
+                       'length': len(self.data),
+                       'md5': h})
             # Write actual data
             # os.lseek(f, TOTAL_OFFSET, 0)
             os.write(f, self.data)
@@ -750,8 +758,10 @@ class DateraObjectWriter(object):
 
 class DateraObjectReader(object):
     def __init__(self, container, object_name, driver):
-        LOG.debug(_("Object reader. container: %s, object_name: %s"
-                    % (container, object_name)))
+        LOG.debug("Object reader. Container: %(container)s, "
+                  "object_name: %(object)s",
+                  {'container': container,
+                   'object': object_name})
         self.container = container
         self.object_name = object_name
         self.driver = driver
@@ -768,8 +778,10 @@ class DateraObjectReader(object):
         return
 
     def read(self):
-        LOG.debug(_("Reading backup. Container: %s, object_name: %s" %
-                  (self.container, self.object_name)))
+        LOG.debug("Reading backup. Container: %(container)s, "
+                  "object_name: %(object)s",
+                  {'container': self.container,
+                   'object': self.object_name})
         data = self.driver._list_snapshots(self.container)
         if self.read_sha256:
             snap = data[-2]["utc_ts"]
@@ -779,7 +791,7 @@ class DateraObjectReader(object):
             # Backups start at 00001, convert to zero index
             snap = data[self.driver._parse_name(self.object_name) - 1][
                 "utc_ts"]
-        LOG.debug(_("Restoring Snapshot: %s"), snap)
+        LOG.debug("Restoring Snapshot: {}".format(snap))
         self.driver._restore_snapshot(self.container, snap)
         # self.driver._delete_snapshot(self.container, most_recent)
         with self.driver._connect_target(self.container) as device_path:
@@ -789,19 +801,23 @@ class DateraObjectReader(object):
             # Read headers
             rawh = os.read(f, TOTAL_OFFSET)
             n, l, h = struct.unpack(PACK, rawh)
-            LOG.debug(_("Reading Headers.\n"
-                        "Number: %s\n"
-                        "Length: %s\n"
-                        "MD5: %s" % (n, l, h)))
+            LOG.debug("Reading Headers.\n Number: %(number)s\n"
+                      "Length: %(length)s\n"
+                      "MD5: %(md5)s",
+                      {'number': n,
+                       'length': l,
+                       'md5': h})
             # Read data
             data = os.read(f, l)
             os.close(f)
             # Compare hashes
             newh = hashlib.md5(data).hexdigest()
             if newh != h:
-                raise ValueError(
-                    _("Data hash read off backup doesn't match calculated "
-                      "hash. new hash: %s read hash: %s" % (newh, h)))
+                raise ValueError("Data hash read off backup doesn't match "
+                                 "calculated hash. new hash: %(new)s "
+                                 "read hash: %(read)s",
+                                 {'new': newh,
+                                  'read': h})
             self.driver._execute("chmod o-r {}".format(device_path))
             return data
 

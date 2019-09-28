@@ -17,10 +17,11 @@ import time
 import uuid
 
 import dfs_sdk
+import six
+
 from eventlet.green import threading
 from oslo_config import cfg
 from oslo_log import log as logging
-import six
 
 from cinder import exception
 from cinder.i18n import _
@@ -506,6 +507,7 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     def update_migrated_volume(self, context, volume, new_volume,
                                volume_status):
         """Return model update for migrated volume.
+
         Each driver implementing this method needs to be responsible for the
         values of _name_id and provider_location. If None is returned or either
         key is not set, it means the volume table does not need to change the

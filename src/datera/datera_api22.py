@@ -32,8 +32,8 @@ from oslo_utils import units
 from cinder import exception
 from cinder.i18n import _
 from cinder.image import image_utils
-from cinder.volume import utils as volutils
 from cinder import utils
+from cinder.volume import utils as volutils
 from cinder.volume import volume_types
 
 from os_brick import exception as brick_exception
@@ -124,10 +124,10 @@ class DateraApi(object):
     def _extend_volume_2_2(self, volume, new_size):
         if volume['size'] >= new_size:
             LOG.warning("Volume size not extended due to original size being "
-                        "greater or equal to new size.  Originial: "
-                        "%(original)s, New: %(new)s", {
-                            'original': volume['size'],
-                            'new': new_size})
+                        "greater or equal to new size. Original: "
+                        "%(original)s, New: %(new)s",
+                        {'original': volume['size'],
+                         'new': new_size})
             return
         policies = self._get_policies_for_resource(volume)
         template = policies['template']
@@ -617,7 +617,7 @@ class DateraApi(object):
                 'reference': reference,
                 'size': size,
                 'safe_to_manage': safe_to_manage,
-                'reason_not_safe': _(reason_not_safe),
+                'reason_not_safe': reason_not_safe,
                 'cinder_id': cinder_id,
                 'extra_info': extra_info})
         return results
@@ -919,8 +919,8 @@ class DateraApi(object):
                 except brick_exception.FailedISCSITargetPortalLogin:
                     retries -= 1
                     if not retries:
-                        LOG.error(_("Could not log into portal before end of "
-                                    "polling period"))
+                        LOG.error("Could not log into portal before end of "
+                                  "polling period")
                         raise
                     LOG.debug("Failed to login to portal, retrying")
                     eventlet.sleep(2)
@@ -1088,8 +1088,10 @@ class DateraApi(object):
 
     def _update_migrated_volume_2_2(self, context, volume, new_volume,
                                     volume_status):
-        """Rename the newly created volume to the original volume so we
-           can find it correctly"""
+        """Rename the newly created volume to the original volume.
+
+        So we can find it correctly.
+        """
         tenant = self.get_tenant(new_volume['project_id'])
         ai = self.cvol_to_ai(new_volume, tenant=tenant)
         data = {'name': datc.get_name(volume)}

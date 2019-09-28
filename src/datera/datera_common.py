@@ -231,9 +231,9 @@ def _image_accessible(driver, context, volume, image_meta):
                                                controller='image_members',
                                                image_id=image_meta['id'])
             except glance_exc.HTTPForbidden as e:
-                LOG.warn(e)
+                LOG.warning(e)
         except glance_exc.HTTPForbidden as e:
-            LOG.warn(e)
+            LOG.warning(e)
         members = list(members)
         LOG.debug("Shared image %(image)s members: %(members)s",
                   {"image": image_meta['id'], "members": members})
