@@ -1036,7 +1036,8 @@ class DateraApi(object):
             fpolicies = {k: int(v) for k, v in
                          policies.items() if k.endswith("max")}
             # Filter all 0 values from being passed
-            fpolicies = dict([_v for _v in list(fpolicies.items()) if _v[1] > 0])
+            fpolicies = {k: int(v) for k, v in
+                         fpolicies.items() if v > 0}
             # Calculate and set iops/gb and bw/gb, but only if they don't
             # exceed total_iops_max and total_bw_max aren't set since they take
             # priority
