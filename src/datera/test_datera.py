@@ -76,6 +76,7 @@ class DateraVolumeTestCasev22(test.TestCase):
         # No-op config getter
         self.driver.configuration.get = lambda *args, **kwargs: {}
         # self.addCleanup(self.api_patcher.stop)
+        self.driver.datera_version = "3.3.3"
 
     def test_volume_create_success(self):
         testvol = _stub_volume()

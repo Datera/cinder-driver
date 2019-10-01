@@ -86,7 +86,7 @@ def lookup(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         obj = args[0]
-        name = "_" + func.func_name + "_" + obj.apiv.replace(".", "_")
+        name = "_" + func.__name__ + "_" + obj.apiv.replace(".", "_")
         LOG.debug("Trying method: %s", name)
         call_id = uuid.uuid4()
         if obj.do_profile:
