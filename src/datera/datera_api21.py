@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from __future__ import absolute_import
 import contextlib
 import math
 import random
@@ -982,7 +983,7 @@ class DateraApi(object):
             fpolicies = {k: int(v) for k, v in
                          policies.items() if k.endswith("max")}
             # Filter all 0 values from being passed
-            fpolicies = dict(filter(lambda _v: _v[1] > 0, fpolicies.items()))
+            fpolicies = dict([_v for _v in list(fpolicies.items()) if _v[1] > 0])
             # Calculate and set iops/gb and bw/gb, but only if they don't
             # exceed total_iops_max and total_bw_max aren't set since they take
             # priority

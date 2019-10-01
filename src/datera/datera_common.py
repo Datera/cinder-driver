@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from __future__ import absolute_import
 import functools
 import random
 import re
@@ -355,7 +356,7 @@ def register_driver(driver):
 
         f = types.MethodType(func, driver)
         try:
-            setattr(driver, func.func_name, f)
+            setattr(driver, func.__name__, f)
         # PY3+
         except AttributeError:
             setattr(driver, func.__name__, f)
