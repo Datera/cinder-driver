@@ -245,7 +245,7 @@ class DateraBackupDriver(chunkeddriver.ChunkedBackupDriver):
         no_opts = filter(lambda opt: not getattr(CONF, opt, None), req_opts)
         if no_opts:
             raise exception.InvalidInput(
-                reason =_('Missing required opts %s') % no_opts)
+                reason=_('Missing required opts %s') % no_opts)
 
     def _create_volume(self, name, size):
         tenant = self.tenant_id
