@@ -34,7 +34,10 @@ from cinder import exception
 from cinder.i18n import _
 from cinder.image import image_utils
 from cinder import utils
-from cinder.volume import utils as volutils
+try:
+    from cinder.volume import utils as volutils
+except ImportError:
+    from cinder.volume import volume_utils as volutils
 from cinder.volume import volume_types
 
 from os_brick import exception as brick_exception

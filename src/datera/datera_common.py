@@ -59,6 +59,10 @@ API_TIMEOUT = 20
 VALID_CHARS = set(string.ascii_letters + string.digits + "-_.")
 
 
+class DateraAPIException(exception.VolumeBackendAPIException):
+    message = _("Bad response from Datera API")
+
+
 def get_name(resource):
     dn = resource.get('display_name')
     cid = resource.get('id')

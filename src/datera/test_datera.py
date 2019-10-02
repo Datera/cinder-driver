@@ -21,9 +21,9 @@ import uuid
 from cinder import context
 from cinder import exception
 from cinder import test
+from cinder import version
 from cinder.volume import configuration as conf
 from cinder.volume import volume_types
-
 
 sys.modules['dfs_sdk'] = mock.MagicMock()
 
@@ -33,6 +33,7 @@ datera.datc.DEFAULT_SI_SLEEP = 0
 datera.datc.DEFAULT_SNAP_SLEEP = 0
 OS_PREFIX = datera.datc.OS_PREFIX
 UNMANAGE_PREFIX = datera.datc.UNMANAGE_PREFIX
+DateraAPIException = datera.datc.DateraAPIException
 
 
 class DateraVolumeTestCasev22(test.TestCase):
@@ -85,9 +86,8 @@ class DateraVolumeTestCasev22(test.TestCase):
 
     def test_volume_create_fails(self):
         testvol = _stub_volume()
-        self.driver.api.app_instances.create.side_effect = (
-            exception.DateraAPIException)
-        self.assertRaises(exception.DateraAPIException,
+        self.driver.api.app_instances.create.side_effect = DateraAPIException
+        self.assertRaises(DateraAPIException,
                           self.driver.create_volume,
                           testvol)
 
@@ -136,9 +136,8 @@ class DateraVolumeTestCasev22(test.TestCase):
     def test_create_cloned_volume_fails(self):
         testvol = _stub_volume()
         ref = _stub_volume(id=str(uuid.uuid4()))
-        self.driver.api.app_instances.create.side_effect = (
-            exception.DateraAPIException)
-        self.assertRaises(exception.DateraAPIException,
+        self.driver.api.app_instances.create.side_effect = DateraAPIException
+        self.assertRaises(DateraAPIException,
                           self.driver.create_cloned_volume,
                           testvol,
                           ref)
@@ -155,9 +154,8 @@ class DateraVolumeTestCasev22(test.TestCase):
 
     def test_delete_volume_fails(self):
         testvol = _stub_volume()
-        self.driver.api.app_instances.list.side_effect = (
-            exception.DateraAPIException)
-        self.assertRaises(exception.DateraAPIException,
+        self.driver.api.app_instances.list.side_effect = DateraAPIException
+        self.assertRaises(DateraAPIException,
                           self.driver.delete_volume, testvol)
 
     def test_ensure_export_success(self):
@@ -187,12 +185,11 @@ class DateraVolumeTestCasev22(test.TestCase):
         aimock = mock.MagicMock()
         simock = mock.MagicMock()
         simock.reload.return_value = simock
-        aimock.storage_instances.list.side_effect = (
-            exception.DateraAPIException)
+        aimock.storage_instances.list.side_effect = DateraAPIException
         simock.op_state = "available"
         self.driver.cvol_to_ai = mock.Mock()
         self.driver.cvol_to_ai.return_value = aimock
-        self.assertRaises(exception.DateraAPIException,
+        self.assertRaises(DateraAPIException,
                           self.driver.create_export,
                           None,
                           testvol,
@@ -222,11 +219,10 @@ class DateraVolumeTestCasev22(test.TestCase):
         simock = mock.MagicMock()
         simock.access = {"ips": ["test-ip"], "iqn": "test-iqn"}
         simock.reload.return_value = simock
-        aimock.storage_instances.list.side_effect = (
-            exception.DateraAPIException)
+        aimock.storage_instances.list.side_effect = DateraAPIException
         self.driver.cvol_to_ai = mock.Mock()
         self.driver.cvol_to_ai.return_value = aimock
-        self.assertRaises(exception.DateraAPIException,
+        self.assertRaises(DateraAPIException,
                           self.driver.initialize_connection,
                           testvol,
                           {})
@@ -244,10 +240,10 @@ class DateraVolumeTestCasev22(test.TestCase):
         testvol = _stub_volume()
         self.driver.cvol_to_ai = mock.MagicMock()
         aimock = mock.MagicMock()
-        aimock.set.side_effect = exception.DateraAPIException
+        aimock.set.side_effect = DateraAPIException
         self.driver.cvol_to_ai.return_value = aimock
         ctxt = context.get_admin_context()
-        self.assertRaises(exception.DateraAPIException,
+        self.assertRaises(DateraAPIException,
                           self.driver.detach_volume,
                           ctxt, testvol)
 
@@ -274,9 +270,8 @@ class DateraVolumeTestCasev22(test.TestCase):
 
     def test_create_snapshot_fails(self):
         testsnap = _stub_snapshot(volume_id=str(uuid.uuid4()))
-        self.driver.api.app_instances.list.side_effect = (
-            exception.DateraAPIException)
-        self.assertRaises(exception.DateraAPIException,
+        self.driver.api.app_instances.list.side_effect = DateraAPIException
+        self.assertRaises(DateraAPIException,
                           self.driver.create_snapshot,
                           testsnap)
 
@@ -296,9 +291,9 @@ class DateraVolumeTestCasev22(test.TestCase):
         testsnap = _stub_snapshot(volume_id=str(uuid.uuid4()))
         self.driver.cvol_to_dvol = mock.MagicMock()
         aimock = mock.MagicMock()
-        aimock.snapshots.list.side_effect = exception.DateraAPIException
+        aimock.snapshots.list.side_effect = DateraAPIException
         self.driver.cvol_to_dvol.return_value = aimock
-        self.assertRaises(exception.DateraAPIException,
+        self.assertRaises(DateraAPIException,
                           self.driver.delete_snapshot,
                           testsnap)
 
@@ -321,9 +316,9 @@ class DateraVolumeTestCasev22(test.TestCase):
         testvol = _stub_volume()
         self.driver.cvol_to_dvol = mock.MagicMock()
         aimock = mock.MagicMock()
-        aimock.snapshots.list.side_effect = exception.DateraAPIException
+        aimock.snapshots.list.side_effect = DateraAPIException
         self.driver.cvol_to_dvol.return_value = aimock
-        self.assertRaises(exception.DateraAPIException,
+        self.assertRaises(DateraAPIException,
                           self.driver.create_volume_from_snapshot,
                           testvol,
                           testsnap)
@@ -344,12 +339,12 @@ class DateraVolumeTestCasev22(test.TestCase):
         testvol = _stub_volume()
         mockvol = mock.MagicMock()
         mockvol.size = newsize
-        mockvol.set.side_effect = exception.DateraAPIException
+        mockvol.set.side_effect = DateraAPIException
         self.driver.cvol_to_dvol = mock.MagicMock()
         self.driver.cvol_to_dvol.return_value = mockvol
         self.driver._offline_flip_2_2 = mock.MagicMock()
         self.driver._offline_flip_2_1 = mock.MagicMock()
-        self.assertRaises(exception.DateraAPIException,
+        self.assertRaises(DateraAPIException,
                           self.driver.extend_volume,
                           testvol,
                           newsize)
@@ -436,11 +431,21 @@ class DateraVolumeTestCasev22(test.TestCase):
         offset = mock.MagicMock()
         sort_keys = mock.MagicMock()
         sort_dirs = mock.MagicMock()
-        with mock.patch('cinder.volume.utils.paginate_entries_list') as mpage:
-            self.driver.get_manageable_volumes(
-                [testvol], marker, limit, offset, sort_keys, sort_dirs)
-            mpage.assert_called_once_with(
-                [v1, v2], marker, limit, offset, sort_keys, sort_dirs)
+        if (version.version_string() >= '15.0.0'):
+            with mock.patch(
+                    'cinder.volume.volume_utils.paginate_entries_list') \
+                    as mpage:
+                self.driver.get_manageable_volumes(
+                    [testvol], marker, limit, offset, sort_keys, sort_dirs)
+                mpage.assert_called_once_with(
+                    [v1, v2], marker, limit, offset, sort_keys, sort_dirs)
+        else:
+            with mock.patch(
+                    'cinder.volume.utils.paginate_entries_list') as mpage:
+                self.driver.get_manageable_volumes(
+                    [testvol], marker, limit, offset, sort_keys, sort_dirs)
+                mpage.assert_called_once_with(
+                    [v1, v2], marker, limit, offset, sort_keys, sort_dirs)
 
     def test_unmanage(self):
         testvol = _stub_volume()
