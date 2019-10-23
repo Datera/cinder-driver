@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from __future__ import absolute_import
 import contextlib
 import math
 import random
@@ -32,8 +33,8 @@ from oslo_utils import units
 from cinder import exception
 from cinder.i18n import _
 from cinder.image import image_utils
-from cinder.volume import utils as volutils
 from cinder import utils
+from cinder.volume import utils as volutils
 from cinder.volume import volume_types
 
 from os_brick import exception as brick_exception
@@ -578,7 +579,7 @@ class DateraApi(object):
                 'reference': reference,
                 'size': size,
                 'safe_to_manage': safe_to_manage,
-                'reason_not_safe': _(reason_not_safe),
+                'reason_not_safe': reason_not_safe,
                 'cinder_id': cinder_id,
                 'extra_info': extra_info})
         return results
@@ -880,8 +881,8 @@ class DateraApi(object):
                 except brick_exception.FailedISCSITargetPortalLogin:
                     retries -= 1
                     if not retries:
-                        LOG.error(_("Could not log into portal before end of "
-                                    "polling period"))
+                        LOG.error("Could not log into portal before end of "
+                                  "polling period")
                         raise
                     LOG.debug("Failed to login to portal, retrying")
                     eventlet.sleep(2)
@@ -982,7 +983,8 @@ class DateraApi(object):
             fpolicies = {k: int(v) for k, v in
                          policies.items() if k.endswith("max")}
             # Filter all 0 values from being passed
-            fpolicies = dict(filter(lambda _v: _v[1] > 0, fpolicies.items()))
+            fpolicies = {k: int(v) for k, v in
+                         fpolicies.items() if v > 0}
             # Calculate and set iops/gb and bw/gb, but only if they don't
             # exceed total_iops_max and total_bw_max aren't set since they take
             # priority
@@ -1035,8 +1037,10 @@ class DateraApi(object):
 
     def _update_migrated_volume_2_1(self, context, volume, new_volume,
                                     volume_status):
-        """Rename the newly created volume to the original volume so we
-           can find it correctly"""
+        """Rename the newly created volume to the original volume.
+
+        So we can find it correctly.
+        """
         tenant = self.get_tenant(new_volume['project_id'])
         ai = self.cvol_to_ai(new_volume, tenant=tenant)
         data = {'name': datc.get_name(volume)}

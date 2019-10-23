@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from __future__ import absolute_import
 import functools
 import random
 import re
@@ -86,7 +87,7 @@ def lookup(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         obj = args[0]
-        name = "_" + func.func_name + "_" + obj.apiv.replace(".", "_")
+        name = "_" + func.__name__ + "_" + obj.apiv.replace(".", "_")
         LOG.debug("Trying method: %s", name)
         call_id = uuid.uuid4()
         if obj.do_profile:
@@ -231,9 +232,9 @@ def _image_accessible(driver, context, volume, image_meta):
                                                controller='image_members',
                                                image_id=image_meta['id'])
             except glance_exc.HTTPForbidden as e:
-                LOG.warn(e)
+                LOG.warning(e)
         except glance_exc.HTTPForbidden as e:
-            LOG.warn(e)
+            LOG.warning(e)
         members = list(members)
         LOG.debug("Shared image %(image)s members: %(members)s",
                   {"image": image_meta['id'], "members": members})
@@ -355,7 +356,7 @@ def register_driver(driver):
 
         f = types.MethodType(func, driver)
         try:
-            setattr(driver, func.func_name, f)
+            setattr(driver, func.__name__, f)
         # PY3+
         except AttributeError:
             setattr(driver, func.__name__, f)

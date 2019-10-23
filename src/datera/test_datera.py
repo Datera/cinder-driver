@@ -13,13 +13,14 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from __future__ import absolute_import
 import mock
 import sys
 import uuid
 
 from cinder import context
-from cinder import test
 from cinder import exception
+from cinder import test
 from cinder.volume import configuration as conf
 from cinder.volume import volume_types
 
@@ -76,6 +77,7 @@ class DateraVolumeTestCasev22(test.TestCase):
         # No-op config getter
         self.driver.configuration.get = lambda *args, **kwargs: {}
         # self.addCleanup(self.api_patcher.stop)
+        self.driver.datera_version = "3.3.3"
 
     def test_volume_create_success(self):
         testvol = _stub_volume()
@@ -84,7 +86,7 @@ class DateraVolumeTestCasev22(test.TestCase):
     def test_volume_create_fails(self):
         testvol = _stub_volume()
         self.driver.api.app_instances.create.side_effect = (
-                exception.DateraAPIException)
+            exception.DateraAPIException)
         self.assertRaises(exception.DateraAPIException,
                           self.driver.create_volume,
                           testvol)
@@ -92,25 +94,25 @@ class DateraVolumeTestCasev22(test.TestCase):
     @mock.patch.object(volume_types, 'get_volume_type')
     def test_create_volume_with_extra_specs(self, mock_get_type):
         mock_get_type.return_value = {
-             'name': u'The Best',
-             'qos_specs_id': None,
-             'deleted': False,
-             'created_at': '2015-08-14 04:18:11',
-             'updated_at': None,
-             'extra_specs': {
-                 u'volume_backend_name': u'datera',
-                 u'qos:max_iops_read': u'2000',
-                 u'qos:max_iops_write': u'4000',
-                 u'qos:max_iops_total': u'4000'
-             },
-             'is_public': True,
-             'deleted_at': None,
-             'id': u'dffb4a83-b8fb-4c19-9f8c-713bb75db3b1',
-             'description': None
-         }
+            'name': u'The Best',
+            'qos_specs_id': None,
+            'deleted': False,
+            'created_at': '2015-08-14 04:18:11',
+            'updated_at': None,
+            'extra_specs': {
+                u'volume_backend_name': u'datera',
+                u'qos:max_iops_read': u'2000',
+                u'qos:max_iops_write': u'4000',
+                u'qos:max_iops_total': u'4000'
+            },
+            'is_public': True,
+            'deleted_at': None,
+            'id': u'dffb4a83-b8fb-4c19-9f8c-713bb75db3b1',
+            'description': None
+        }
 
         mock_volume = _stub_volume(
-             volume_type_id='dffb4a83-b8fb-4c19-9f8c-713bb75db3b1'
+            volume_type_id='dffb4a83-b8fb-4c19-9f8c-713bb75db3b1'
         )
 
         self.assertIsNone(self.driver.create_volume(mock_volume))
@@ -135,7 +137,7 @@ class DateraVolumeTestCasev22(test.TestCase):
         testvol = _stub_volume()
         ref = _stub_volume(id=str(uuid.uuid4()))
         self.driver.api.app_instances.create.side_effect = (
-                exception.DateraAPIException)
+            exception.DateraAPIException)
         self.assertRaises(exception.DateraAPIException,
                           self.driver.create_cloned_volume,
                           testvol,
@@ -154,7 +156,7 @@ class DateraVolumeTestCasev22(test.TestCase):
     def test_delete_volume_fails(self):
         testvol = _stub_volume()
         self.driver.api.app_instances.list.side_effect = (
-                exception.DateraAPIException)
+            exception.DateraAPIException)
         self.assertRaises(exception.DateraAPIException,
                           self.driver.delete_volume, testvol)
 
@@ -186,7 +188,7 @@ class DateraVolumeTestCasev22(test.TestCase):
         simock = mock.MagicMock()
         simock.reload.return_value = simock
         aimock.storage_instances.list.side_effect = (
-                exception.DateraAPIException)
+            exception.DateraAPIException)
         simock.op_state = "available"
         self.driver.cvol_to_ai = mock.Mock()
         self.driver.cvol_to_ai.return_value = aimock
@@ -221,7 +223,7 @@ class DateraVolumeTestCasev22(test.TestCase):
         simock.access = {"ips": ["test-ip"], "iqn": "test-iqn"}
         simock.reload.return_value = simock
         aimock.storage_instances.list.side_effect = (
-                exception.DateraAPIException)
+            exception.DateraAPIException)
         self.driver.cvol_to_ai = mock.Mock()
         self.driver.cvol_to_ai.return_value = aimock
         self.assertRaises(exception.DateraAPIException,
@@ -273,7 +275,7 @@ class DateraVolumeTestCasev22(test.TestCase):
     def test_create_snapshot_fails(self):
         testsnap = _stub_snapshot(volume_id=str(uuid.uuid4()))
         self.driver.api.app_instances.list.side_effect = (
-                exception.DateraAPIException)
+            exception.DateraAPIException)
         self.assertRaises(exception.DateraAPIException,
                           self.driver.create_snapshot,
                           testsnap)
