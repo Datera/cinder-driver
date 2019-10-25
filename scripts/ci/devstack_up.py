@@ -64,6 +64,7 @@ SERVICE_TOKEN=111222333444
 LIBVIRT_TYPE=kvm
 
 IP_VERSION=4
+USE_PYTHON3=True
 
 # Screen console logs will capture service logs.
 LOGDIR=/opt/stack/logs
@@ -362,8 +363,28 @@ def run_tempest(ssh):
             time.sleep(WAIT_TIME)
             count += WAIT_TIME
     if count >= TEMPEST_WAIT:
-        raise EnvironmentError("Timeout expired before stack.sh "
+        raise EnvironmentError("Timeout expired before tempest tests "
                                "completed")
+
+def run_tox(ssh):
+    ssh.exec_command("sudo apt-get -y install python3-dev")
+    ssh.exec_command("sudo apt-get -y install python3.7-dev")
+    ssh.exec_command("cd /opt/stack/cinder && tox -e genopts")
+    ssh.exec_command("cd /opt/stack/cinder && "
+                     "tox >console.out.log 2>/dev/null &", wait = False)
+    count = 0
+    while count <= TEMPEST_WAIT:
+        try:
+            print("Checking tox test results ...")
+            result = ssh.exec_command(
+                "grep -oP 'congratulations' /opt/stack/cinder/console.out.log", quiet=True)
+            return SUCCESS
+            break
+        except EnvironmentError:
+            time.sleep(WAIT_TIME)
+            count += WAIT_TIME
+    if count >= TEMPEST_WAIT:
+        raise EnvironmentError("Timeout expired before tox tests completed")
 
 def reinstall_node(ip, username, password):
     print("Wiping node: {}".format(ip))
@@ -399,6 +420,7 @@ def reinstall_node(ip, username, password):
     print("Ubuntu node ready...")
 
 def main(node_ip, username, password, cluster_ip, tenant, patchset,
+         skip_tempest, skip_tox,
          devstack_version, cinder_driver_version, glance_driver_version,
          only_update_drivers, reimage_client):
 
@@ -421,15 +443,33 @@ def main(node_ip, username, password, cluster_ip, tenant, patchset,
         install_devstack(ssh, cluster_ip, tenant, patchset, devstack_version)
         _update_drivers(ssh, cluster_ip, patchset, cinder_driver_version,
                         glance_driver_version)
-    if run_tempest:
+
+    result = SUCCESS
+    result2 = SUCCESS
+    if not skip_tempest:
         result = run_tempest(ssh)
         if result == 0:
             print('Tempest Passed!!!')
         else:
             print("Tempest Failed :(, Failures: {}".format(result))
     else:
-        print('Devstack setup finished without error')
-    return result
+        print('Not running tempest tests...')
+
+    if not skip_tox:
+        result2 = run_tox(ssh)
+        if result2 == SUCCESS:
+            print('Tox tests Passed!!!')
+        else:
+            print("Tox tests Failed :(")
+            print(ssh.exec_command(
+                "tail -10 /opt/stack/cinder/console.out.log", quiet=True))
+    else:
+        print('Not running tox tests...')
+
+    if result == 0:
+        return result2
+    else:
+        return result
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -443,12 +483,14 @@ if __name__ == '__main__':
     parser.add_argument('--devstack-version', default='master')
     parser.add_argument('--tenant', default='')
     parser.add_argument('--patchset', default='master')
-    parser.add_argument('--run-tempest', action='store_true')
+    parser.add_argument('--skip-tempest', action='store_true')
+    parser.add_argument('--skip-tox', action='store_true')
     parser.add_argument('--reimage-client', action='store_true')
     parser.add_argument('--only-update-drivers', action='store_true')
     args = parser.parse_args()
     if args.password in {"", "none", "None"}:
         args.password = None
+    # print(args)
     sys.exit(main(
         args.node_ip,
         args.username,
@@ -456,6 +498,8 @@ if __name__ == '__main__':
         args.cluster_ip,
         args.tenant,
         args.patchset,
+        args.skip_tempest,
+        args.skip_tox,
         args.devstack_version,
         args.cinder_driver_version,
         args.glance_driver_version,
