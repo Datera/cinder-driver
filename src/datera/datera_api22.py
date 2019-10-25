@@ -585,6 +585,10 @@ class DateraApi(object):
 
     def _list_manageable_2_2(self, cinder_volumes):
         # Use the first volume to determine the tenant we're working under
+        if cinder_volumes:
+            tenant = self.get_tenant(cinder_volumes[0]['project_id'])
+        else:
+            tenant = None
         tenant = self.get_tenant(cinder_volumes[0]['project_id'])
         app_instances = self.api.app_instances.list(tenant=tenant)
 
@@ -592,7 +596,7 @@ class DateraApi(object):
 
         if cinder_volumes and 'volume_id' in cinder_volumes[0]:
             cinder_volume_ids = [vol['volume_id'] for vol in cinder_volumes]
-        elif cinder_volumes:
+        else:
             cinder_volume_ids = [vol['id'] for vol in cinder_volumes]
 
         for ai in app_instances:
