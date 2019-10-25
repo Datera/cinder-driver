@@ -769,7 +769,7 @@ class DateraApi(object):
         if not cached:
             LOG.debug("No image cache found for: %s, caching image",
                       image_meta['id'])
-            self._cache_vol(context, src_vol, image_meta, image_service)
+            self._cache_vol_2_1(context, src_vol, image_meta, image_service)
 
         # Now perform the clone of the found image or newly cached image
         self._create_cloned_volume_2_1(volume, src_vol)
@@ -790,7 +790,7 @@ class DateraApi(object):
             self._retype_2_1(context, volume, vtype, diff, host)
         return None, True
 
-    def _cache_vol(self, context, vol, image_meta, image_service):
+    def _cache_vol_2_1(self, context, vol, image_meta, image_service):
         image_id = image_meta['id']
         # Pull down image and determine if valid
         with image_utils.TemporaryImages.fetch(image_service,
@@ -840,7 +840,8 @@ class DateraApi(object):
         # We don't actually care about the snapshot uuid, we just want
         # a single snapshot
         snapshot = {'id': str(uuid.uuid4()),
-                    'volume_id': vol['id']}
+                    'volume_id': vol['id'],
+                    'project_id': vol['project_id']}
         self._create_snapshot_2_1(snapshot)
         metadata = {'type': 'cached_image'}
         tenant = self.get_tenant(vol['project_id'])
