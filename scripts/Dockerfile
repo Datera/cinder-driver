@@ -1,5 +1,5 @@
 FROM registry.redhat.io/rhosp14/openstack-cinder-volume
-MAINTAINER Datera Ecosystems Enginering g-ecosystems@datera.io
+MAINTAINER Datera Ecosystems Engineering g-ecosystems@datera.io
 
 LABEL name="datera-openstack-cinder-volume-rhosp14" \
       maintainer="g-ecosystems@datera.io" \
