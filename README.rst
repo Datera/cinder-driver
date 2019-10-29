@@ -73,7 +73,7 @@ Here is an example to follow:
     dfs-sdk==1.2.24
     openstacksdk==0.27.0
     (cinder-19.0.0.0rc2.dev43) $ deactivate
-    $ ls -l /openstack/venvs/cinder-19.0.0.0rc2.dev43/lib/python2.7/site-packages | grep dfs 
+    $ ls -l /openstack/venvs/cinder-19.0.0.0rc2.dev43/lib/python2.7/site-packages | grep dfs
     drwxr-xr-x  5 root root   4096 May 30 20:21 dfs_sdk
     drwxr-xr-x  2 root root     87 May 30 20:21 dfs_sdk-1.2.22.dist-info
     $
@@ -164,6 +164,8 @@ Datera Volume Driver Version History
 
    * - Version
      - Changes
+   * - 2019.6.4.1
+     - Packaging as pip install, UT, CI related changes.
    * - 2019.2.25.0
      - Scalability fixes and utility script updates
    * - 2019.1.24.0
@@ -306,7 +308,7 @@ Volume-Type ExtraSpecs
      - (Int) Specifies number of replicas for each volume. Can only increase, never decrease after volume creation
    * - ``DF:round_robin`` = ``False``
      - (Bool) True to round robin the provided portals for a target
-   * - ``DF:placement_mode`` = ``hybrid``
+   * - ``DF:placement_policy`` = ``hybrid``
      - (Bool) True to set acl 'allow_all' on volume created.  Cannot be changed on volume once set
    * - ``DF:ip_pool`` = ``default``
      - (String) Specifies IP pool to use for volume
