@@ -123,7 +123,7 @@ class DateraApi(object):
     # =================
 
     def _extend_volume_2_2(self, volume, new_size):
-        if volume['size'] >= new_size:
+        if volume['size'] > new_size:
             LOG.warning("Volume size not extended due to original size being "
                         "greater or equal to new size. Original: "
                         "%(original)s, New: %(new)s",
