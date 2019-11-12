@@ -347,28 +347,41 @@ class DateraApi(object):
     # =================
 
     def _detach_volume_2_2(self, context, volume, attachment=None):
-        data = {
-            'admin_state': 'offline',
-            'force': True
-        }
         try:
             tenant = self.get_tenant(volume['project_id'])
             ai = self.cvol_to_ai(volume, tenant=tenant)
-            ai.set(tenant=tenant, **data)
-            # TODO(_alastor_): Make acl cleaning multi-attach aware
-            self._clean_acl_2_2(volume)
+            # Clear out ACL for this specific attachment
+            si = ai.storage_instances.list(tenant=tenant)[0]
+            existing_acl = si.acl_policy.get(tenant=tenant)
+            data = {}
+            # Grabbing only the 'path' key from each existing initiator
+            # within the existing acl. eacli --> existing acl initiator
+            eacli = []
+            for acl in existing_acl['initiators']:
+                if attachment is not None and
+                        acl['path'].split('/')[-1] ==
+                        attachment.connector['initiator']:
+                    continue
+                nacl = {}
+                nacl['path'] = acl['path']
+                eacli.append(nacl)
+            data['initiators'] = eacli
+            data['initiator_groups'] = existing_acl['initiator_groups']
+            si.acl_policy.set(tenant=tenant, **data)
+
+            if not eacli:
+                # bring the application instance offline if there
+                # are no initiators left.
+                data = {
+                    'admin_state': 'offline',
+                    'force': True
+                }
+                ai.set(tenant=tenant, **data)
+
         except exception.NotFound:
             msg = ("Tried to detach volume %s, but it was not found in the "
                    "Datera cluster. Continuing with detach.")
             LOG.info(msg, volume['id'])
-
-    def _clean_acl_2_2(self, volume):
-        tenant = self.get_tenant(volume['project_id'])
-        ai = self.cvol_to_ai(volume, tenant=tenant)
-        si = ai.storage_instances.list(tenant=tenant)[0]
-        # Clear out ACL
-        acl = si.acl_policy.get(tenant=tenant)
-        acl.set(tenant=tenant, initiators=[])
 
     # ===================
     # = Create Snapshot =
