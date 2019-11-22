@@ -358,8 +358,8 @@ class DateraApi(object):
             # within the existing acl. eacli --> existing acl initiator
             eacli = []
             for acl in existing_acl['initiators']:
-                if attachment is not None and
-                        acl['path'].split('/')[-1] ==
+                if attachment is not None and \
+                   acl['path'].split('/')[-1] == \
                         attachment.connector['initiator']:
                     continue
                 nacl = {}
