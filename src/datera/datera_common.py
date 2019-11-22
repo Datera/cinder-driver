@@ -352,11 +352,6 @@ def register_driver(driver):
                  create_tenant,
                  cvol_to_ai,
                  cvol_to_dvol]:
-        # PY27
 
         f = types.MethodType(func, driver)
-        try:
-            setattr(driver, func.__name__, f)
-        # PY3+
-        except AttributeError:
-            setattr(driver, func.__name__, f)
+        setattr(driver, func.__name__, f)
