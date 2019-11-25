@@ -174,10 +174,22 @@ class DateraApi(object):
     # =================
 
     def _delete_volume_2_2(self, volume):
-        self._detach_volume_2_2(None, volume)
         try:
             tenant = self.get_tenant(volume['project_id'])
             ai = self.cvol_to_ai(volume, tenant=tenant)
+            si = ai.storage_instances.list(tenant=tenant)[0]
+
+            # Clear out ACL
+            acl = si.acl_policy.get(tenant=tenant)
+            acl.set(tenant=tenant, initiators=[])
+
+            # Bring volume offline
+            data = {
+                'admin_state': 'offline',
+                'force': True
+            }
+            ai.set(tenant=tenant, **data)
+
             ai.delete(tenant=tenant, force=True)
         except exception.NotFound:
             msg = ("Tried to delete volume %s, but it was not found in the "
