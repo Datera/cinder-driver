@@ -164,6 +164,8 @@ Datera Volume Driver Version History
 
    * - Version
      - Changes
+   * - 2019.12.10.0
+     - Python 3.x support, tox tests, CI ready, live migration support, image cache, bugfixes.
    * - 2019.6.4.1
      - Packaging as pip install, UT, CI related changes.
    * - 2019.2.25.0
