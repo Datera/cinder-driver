@@ -34,8 +34,11 @@ from cinder import exception
 from cinder.i18n import _
 from cinder.image import image_utils
 from cinder import utils
-from cinder.volume import utils as volutils
 from cinder.volume import volume_types
+try:
+    from cinder.volume import utils as volutils
+except ImportError:
+    from cinder.volume import volume_utils as volutils
 
 from os_brick import exception as brick_exception
 
@@ -353,7 +356,8 @@ class DateraApi(object):
             eacli = []
             for acl in existing_acl['initiators']:
                 if attachment is not None and \
-                        acl['path'].split('/')[-1] == \
+                   attachment.connector is not None and \
+                   acl['path'].split('/')[-1] == \
                         attachment.connector['initiator']:
                     continue
                 nacl = {}
@@ -568,14 +572,17 @@ class DateraApi(object):
 
     def _list_manageable_2_1(self, cinder_volumes):
         # Use the first volume to determine the tenant we're working under
-        tenant = self.get_tenant(cinder_volumes[0]['project_id'])
+        if cinder_volumes:
+            tenant = self.get_tenant(cinder_volumes[0]['project_id'])
+        else:
+            tenant = None
         app_instances = self.api.app_instances.list(tenant=tenant)
 
         results = []
 
         if cinder_volumes and 'volume_id' in cinder_volumes[0]:
             cinder_volume_ids = [vol['volume_id'] for vol in cinder_volumes]
-        elif cinder_volumes:
+        else:
             cinder_volume_ids = [vol['id'] for vol in cinder_volumes]
 
         for ai in app_instances:
@@ -778,7 +785,7 @@ class DateraApi(object):
         if not cached:
             LOG.debug("No image cache found for: %s, caching image",
                       image_meta['id'])
-            self._cache_vol(context, src_vol, image_meta, image_service)
+            self._cache_vol_2_1(context, src_vol, image_meta, image_service)
 
         # Now perform the clone of the found image or newly cached image
         self._create_cloned_volume_2_1(volume, src_vol)
@@ -799,7 +806,7 @@ class DateraApi(object):
             self._retype_2_1(context, volume, vtype, diff, host)
         return None, True
 
-    def _cache_vol(self, context, vol, image_meta, image_service):
+    def _cache_vol_2_1(self, context, vol, image_meta, image_service):
         image_id = image_meta['id']
         # Pull down image and determine if valid
         with image_utils.TemporaryImages.fetch(image_service,
@@ -849,7 +856,8 @@ class DateraApi(object):
         # We don't actually care about the snapshot uuid, we just want
         # a single snapshot
         snapshot = {'id': str(uuid.uuid4()),
-                    'volume_id': vol['id']}
+                    'volume_id': vol['id'],
+                    'project_id': vol['project_id']}
         self._create_snapshot_2_1(snapshot)
         metadata = {'type': 'cached_image'}
         tenant = self.get_tenant(vol['project_id'])
