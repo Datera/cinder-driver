@@ -178,7 +178,7 @@ class ThirdParty(object):
         self.nocleanup = nocleanup
 
     def _post_results(self, ssh, success, log_location, commit_id):
-        base_cmd = ("ssh -i {} -p 29418 {}@review.openstack.org "
+        base_cmd = ("ssh -i {} -p 29418 {}@review.opendev.org "
                     "gerrit review -m ".format(
                         self.gerrit.keyfile, self.gerrit.username) + "'{}'")
         if success:
@@ -354,7 +354,7 @@ class ThirdParty(object):
 def watcher(key, user):
 
     def _helper():
-        cmd = "ssh -i {} -p 29418 {}@review.openstack.org " \
+        cmd = "ssh -i {} -p 29418 {}@review.opendev.org " \
                "\"gerrit stream-events\"".format(key, user)
         dprint("Cmd:", cmd)
         process = subprocess.Popen(
