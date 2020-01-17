@@ -14,9 +14,11 @@
 #    under the License.
 
 from __future__ import absolute_import
-import mock
+
 import sys
 import uuid
+
+import mock
 
 from cinder import context
 from cinder import exception

@@ -14,35 +14,32 @@
 #    under the License.
 
 from __future__ import absolute_import
+
 import contextlib
+import ipaddress
 import math
 import random
 import time
 import uuid
 
-import eventlet
-import ipaddress
-import six
-
 from dfs_sdk import exceptions as dexceptions
-
+import eventlet
+from os_brick import exception as brick_exception
 from oslo_log import log as logging
 from oslo_serialization import jsonutils as json
 from oslo_utils import units
+import six
 
 from cinder import exception
 from cinder.i18n import _
 from cinder.image import image_utils
 from cinder import utils
+import cinder.volume.drivers.datera.datera_common as datc
 from cinder.volume import volume_types
 try:
     from cinder.volume import utils as volutils
 except ImportError:
     from cinder.volume import volume_utils as volutils
-
-from os_brick import exception as brick_exception
-
-import cinder.volume.drivers.datera.datera_common as datc
 
 LOG = logging.getLogger(__name__)
 

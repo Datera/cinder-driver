@@ -14,6 +14,7 @@
 #    under the License.
 
 from __future__ import absolute_import
+
 import functools
 import random
 import re
@@ -23,7 +24,7 @@ import types
 import uuid
 
 import dfs_sdk
-
+from glanceclient import exc as glance_exc
 from oslo_log import log as logging
 
 from cinder import context
@@ -32,8 +33,6 @@ from cinder.i18n import _
 from cinder.image import glance
 from cinder.volume import qos_specs
 from cinder.volume import volume_types
-
-from glanceclient import exc as glance_exc
 
 LOG = logging.getLogger(__name__)
 OS_PREFIX = "OS"
