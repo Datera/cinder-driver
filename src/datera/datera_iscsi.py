@@ -14,25 +14,23 @@
 #    under the License.
 
 from __future__ import absolute_import
+
 import time
 import uuid
 
 import dfs_sdk
-import six
-
 from eventlet.green import threading
 from oslo_config import cfg
 from oslo_log import log as logging
+import six
 
 from cinder import exception
 from cinder.i18n import _
 from cinder import utils
-from cinder.volume.drivers.san import san
-
 import cinder.volume.drivers.datera.datera_api21 as api21
 import cinder.volume.drivers.datera.datera_api22 as api22
 import cinder.volume.drivers.datera.datera_common as datc
-
+from cinder.volume.drivers.san import san
 
 LOG = logging.getLogger(__name__)
 
