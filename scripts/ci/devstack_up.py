@@ -174,6 +174,19 @@ def setup_interfaces(ssh):
     cmd = "ip addr add 172.29.41.8/24 dev eth2"
     ssh.exec_command(cmd, fail_ok=True)
 
+def disable_ipv6(ssh):
+    cmd = "echo 'net.ipv6.conf.all.disable_ipv6 = 1' |  sudo tee --append /etc/sysctl.d/99-sysctl.conf"
+    ssh.exec_command(cmd)
+
+    cmd = "echo 'net.ipv6.conf.default.disable_ipv6 = 1' |  sudo tee --append /etc/sysctl.d/99-sysctl.conf"
+    ssh.exec_command(cmd)
+
+    cmd = "echo 'net.ipv6.conf.lo.disable_ipv6 = 1' |  sudo tee --append /etc/sysctl.d/99-sysctl.conf"
+    ssh.exec_command(cmd)
+
+    cmd = "sudo sysctl -p"
+    ssh.exec_command(cmd)
+
 def setup_stack_user(ssh):
     cmd = ""
     try:
@@ -227,10 +240,9 @@ def _unstack(ssh):
 
 def _install_devstack(ssh, version):
     if version != "master":
-        cmd = ("cd devstack && git checkout {} && nohup ./stack.sh >/dev/null "
-               "2>&1 &".format(version))
-    else:
-        cmd = "cd devstack && nohup ./stack.sh >/dev/null 2>&1 &"
+        cmd = ("cd devstack && git checkout {}".format(version))
+        ssh.exec_command(cmd)
+    cmd = "cd devstack && nohup ./stack.sh >/dev/null 2>&1 &"
     ssh.exec_command(cmd, wait=False)
 
     count = 0
@@ -438,6 +450,7 @@ def main(node_ip, username, password, cluster_ip, tenant, patchset,
         root_ssh = SSH(args.node_ip, args.username, args.password)
         setup_stack_user(root_ssh)
         setup_interfaces(root_ssh)
+        disable_ipv6(root_ssh)
 
         ssh = SSH(node_ip, 'stack', 'stack')
         install_devstack(ssh, cluster_ip, tenant, patchset, devstack_version)
