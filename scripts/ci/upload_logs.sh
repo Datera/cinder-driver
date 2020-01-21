@@ -52,12 +52,6 @@ for log in $LOGFILES; do
     sudo journalctl --unit $log > $HOME/$REF_NAME/logs/$log.txt
 done
 
-# Add the commit id
-cd /opt/stack/cinder
-COMMIT_ID=$(git log --abbrev-commit --pretty=oneline -n1 | awk '{print $2}')
-echo "commit_id: $COMMIT_ID"
-echo "commit_id: $COMMIT_ID" >> console.log.out
-
 # Tempest logs
 cd /opt/stack/tempest
 cp etc/tempest.conf  $HOME/$REF_NAME/logs/tempest.conf
@@ -65,7 +59,14 @@ cp etc/tempest.conf  $HOME/$REF_NAME/logs/tempest.conf
 cd $HOME
 cp /opt/stack/tempest/console.out.log  $HOME/$REF_NAME/console.out.log
 cp /opt/stack/tempest/console.out.log  $HOME/$REF_NAME/console.out.txt
+
+# Add the commit id
+cd /opt/stack/cinder
+COMMIT_ID=$(git log -n1 --pretty=oneline | awk '{print $1}')
+echo "cinder_commit_id $COMMIT_ID"
+echo "cinder_commit_id $COMMIT_ID" >> $HOME/$REF_NAME/console.out.log
+
 # Tar it all up
-#cd $REF_NAME
+cd $HOME
 tar -zcvf $REF_NAME.tar.gz $REF_NAME
 chown -R $USER:$USER $REF_NAME*

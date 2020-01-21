@@ -220,9 +220,7 @@ class ThirdParty(object):
                 "{devstack_up} {cluster_ip} {node_ip} {username} {password} "
                 "--patchset {patchset} "
                 "--only-update-drivers "
-                "--glance-driver-version none "
-                "--keyfile {keyfile} "
-                "--run-tempest".format(devstack_up=DEVSTACK_FILE,
+                "--glance-driver-version none ".format(devstack_up=DEVSTACK_FILE,
                                        cluster_ip=cluster_ip,
                                        node_ip=node_ip,
                                        username=username,
@@ -230,14 +228,12 @@ class ThirdParty(object):
                                        patchset=patchset,
                                        keyfile=node_keyfile)
             )
-            ssh = SSH(node_ip, username, password, keyfile=node_keyfile)
         else:
             exe(
                 "{devstack_up} {cluster_ip} {node_ip} {username} {password} "
                 "--patchset {patchset} "
                 "--reimage-client "
-                "--glance-driver-version none "
-                "--run-tempest ".format(devstack_up=DEVSTACK_FILE,
+                "--glance-driver-version none ".format(devstack_up=DEVSTACK_FILE,
                                         cluster_ip=cluster_ip,
                                         node_ip=node_ip,
                                         username=username,
@@ -245,7 +241,7 @@ class ThirdParty(object):
                                         patchset=patchset)
             )
         # Upload logs
-        ssh = SSH(node_ip, username, password, keyfile=node_keyfile)
+        ssh = SSH(node_ip, 'stack', 'stack', keyfile=node_keyfile)
         success, log_location, commit_id = self._upload_logs(
             ssh, patch_ref_name, post_failed=False)
         os.chdir(workdir)
@@ -297,7 +293,7 @@ class ThirdParty(object):
             dprint("Found FAILURE")
         os.chdir('..')
 
-        self._boto_up_data(patch_ref_name)
+        # self._boto_up_data(patch_ref_name)
         log_location = "".join((BASE_URL, patch_ref_name, "/index.html"))
         # cleanup artifacts
         if not self.nocleanup:
@@ -514,8 +510,8 @@ def main():
             '{head} --patch-sets --format json'.format(head=head)
             )['patchSets'][-1]['ref']
         patchset = patchset.replace("/", "-")
-        success, log_location, commit_id = third_party._upload_logs(
-            ssh, patchset, post_failed=False)
+        # success, log_location, commit_id = third_party._upload_logs(
+        #     ssh, patchset, post_failed=False)
         third_party._post_results(ssh, success, log_location, commit_id)
         return SUCCESS
     else:
