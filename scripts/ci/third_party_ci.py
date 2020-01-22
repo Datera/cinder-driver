@@ -220,25 +220,27 @@ class ThirdParty(object):
                 "{devstack_up} {cluster_ip} {node_ip} {username} {password} "
                 "--patchset {patchset} "
                 "--only-update-drivers "
-                "--glance-driver-version none ".format(devstack_up=DEVSTACK_FILE,
-                                       cluster_ip=cluster_ip,
-                                       node_ip=node_ip,
-                                       username=username,
-                                       password=password,
-                                       patchset=patchset,
-                                       keyfile=node_keyfile)
+                "--glance-driver-version none ".format(
+                    devstack_up=DEVSTACK_FILE,
+                    cluster_ip=cluster_ip,
+                    node_ip=node_ip,
+                    username=username,
+                    password=password,
+                    patchset=patchset,
+                    keyfile=node_keyfile)
             )
         else:
             exe(
                 "{devstack_up} {cluster_ip} {node_ip} {username} {password} "
                 "--patchset {patchset} "
                 "--reimage-client "
-                "--glance-driver-version none ".format(devstack_up=DEVSTACK_FILE,
-                                        cluster_ip=cluster_ip,
-                                        node_ip=node_ip,
-                                        username=username,
-                                        password=password,
-                                        patchset=patchset)
+                "--glance-driver-version none ".format(
+                    devstack_up=DEVSTACK_FILE,
+                    cluster_ip=cluster_ip,
+                    node_ip=node_ip,
+                    username=username,
+                    password=password,
+                    patchset=patchset)
             )
         # Upload logs
         ssh = SSH(node_ip, 'stack', 'stack', keyfile=node_keyfile)
@@ -273,7 +275,7 @@ class ThirdParty(object):
             filename, tempfilename))
         sftp.get(filename, tempfilename)
         cmd = "tar -zxvf {} -C {} -m".format(
-                tempfilename, '/tmp/')
+            tempfilename, '/tmp/')
         dprint("Running: ", cmd)
         exe(cmd)
         create_indexes(tempfiledirectory, patch_ref_name)
@@ -351,7 +353,7 @@ def watcher(key, user):
 
     def _helper():
         cmd = "ssh -i {} -p 29418 {}@review.opendev.org " \
-               "\"gerrit stream-events\"".format(key, user)
+            "\"gerrit stream-events\"".format(key, user)
         dprint("Cmd:", cmd)
         process = subprocess.Popen(
             shlex.split(cmd), stdout=subprocess.PIPE)
@@ -417,15 +419,15 @@ def runner(conf, third_party, upload):
             dprint("Starting CI on: {}".format(patchref))
             try:
                 third_party.run_ci_on_patch(
-                        # Read these from environment variables
-                        conf['node_ip'],
-                        conf['node_user'],
-                        conf['node_password'],
-                        conf['cluster_ip'],
-                        patchref,
-                        conf['cinder_driver_version'],
-                        conf['glance_driver_version'],
-                        node_keyfile=conf['keyfile'])
+                    # Read these from environment variables
+                    conf['node_ip'],
+                    conf['node_user'],
+                    conf['node_password'],
+                    conf['cluster_ip'],
+                    patchref,
+                    conf['cinder_driver_version'],
+                    conf['glance_driver_version'],
+                    node_keyfile=conf['keyfile'])
             except Exception:
                 print("Exception occurred during CI run:")
                 traceback.print_exc()
@@ -508,7 +510,7 @@ def main():
         head = ssh.exec_command('cd /opt/stack/cinder && git rev-parse HEAD')
         patchset = third_party.gerrit.query(
             '{head} --patch-sets --format json'.format(head=head)
-            )['patchSets'][-1]['ref']
+        )['patchSets'][-1]['ref']
         patchset = patchset.replace("/", "-")
         # success, log_location, commit_id = third_party._upload_logs(
         #     ssh, patchset, post_failed=False)
