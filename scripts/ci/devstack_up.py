@@ -215,6 +215,11 @@ def setup_stack_user(ssh):
 def install_devstack(ssh, cluster_ip, tenant, patchset, version):
     print("Installing Devstack...")
 
+    cmd = "sudo apt-get install python-pip -y"
+    ssh.exec_command(cmd)
+    cmd = "sudo pip install --upgrade pip"
+    ssh.exec_command(cmd)
+
     cmd = "rm -rf devstack"
     ssh.exec_command(cmd)
 
