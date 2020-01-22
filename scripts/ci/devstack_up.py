@@ -219,8 +219,6 @@ def install_devstack(ssh, cluster_ip, tenant, patchset, version):
     ssh.exec_command(cmd)
     cmd = "sudo pip install --upgrade pip"
     ssh.exec_command(cmd)
-    cmd = "sudo pip install -U os-testr"
-    ssh.exec_command(cmd)
 
     cmd = "rm -rf devstack"
     ssh.exec_command(cmd)
