@@ -3,5 +3,3 @@ boto
 gerritlib
 jinja2
 ruamel.yaml
-simplejson
-six
