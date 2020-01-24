@@ -142,7 +142,7 @@ class ThirdParty:
         dprint("Running against: %s", patchset)
         patch_ref_name = patchset.replace("/", "-")
 
-        # Setup Devstack and run tempest
+        # Run tests on devstack
         local.python[
             DEVSTACK_FILE,
             cluster_ip,
@@ -154,7 +154,7 @@ class ThirdParty:
             "--only-update-drivers",
             "--glance-driver-version",
             "none",
-            "--reimage-client" if self.use_existing_devstack else None,
+            "--reimage-client" if not self.use_existing_devstack else None,
         ]()
 
         # Collect logs
@@ -198,7 +198,10 @@ class ThirdParty:
             if success:
                 msg = f'"* {self.gerrit.ci_name} {log_location} : SUCCESS " {commit_id}'
             else:
-                msg = f'"* {self.gerrit.ci_name} {log_location} : FAILURE \n You can rerun this CI by commenting run-Datera" {commit_id}'
+                msg = (
+                    f'"* {self.gerrit.ci_name} {log_location} : FAILURE \n'
+                    + f'You can rerun this CI by commenting run-Datera" {commit_id}'
+                )
             cmd = ssh[
                 "-i",
                 self.gerrit.keyfile,
@@ -269,7 +272,7 @@ def watcher(key, user):
             "-i",
             key,
             "-p",
-            "29418",
+            29418,
             f"{user}@review.opendev.org",
             "gerrit stream-events",
         ]
@@ -288,7 +291,8 @@ def watcher(key, user):
                     or "Verified+1" in comment
                 ):
                     iprint(
-                        "project: %s | author: %s | patchSet: %s | branch: %s | comment: %s",
+                        "project: %s | author: %s | patchSet: %s |"
+                        "branch: %s | comment: %s",
                         project,
                         author,
                         patchSet,
@@ -344,12 +348,11 @@ def runner(conf, third_party, upload):
                     conf["glance_driver_version"],
                     node_keyfile=conf["keyfile"],
                 )
+                iprint("Finished CI on: %s", patchref)
             except Exception:
                 eprint("Exception occurred during CI run:")
                 traceback.print_exc()
-                raise
             PATCH_QUEUE.task_done()
-            iprint("Finished CI on: {}".format(patchref))
 
     rt = threading.Thread(target=_helper, name="RunnerThread")
     iprint("Starting runner")
@@ -387,7 +390,8 @@ def main():
     coloredlogs.install(
         level="DEBUG" if args.debug else "INFO",
         logger=LOGGER,
-        fmt="%(asctime)s %(hostname)s %(name)s[%(threadName)s] %(levelname)s %(message)s",
+        fmt="%(asctime)s %(hostname)s %(name)s[%(threadName)s] "
+        + "%(levelname)s %(message)s",
     )
 
     if args.show_all_events:
