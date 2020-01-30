@@ -17,10 +17,17 @@ import boto
 import coloredlogs
 import ruamel.yaml as yaml
 from boto.s3.connection import OrdinaryCallingFormat
-from gerritlib.gerrit import Gerrit
 from jinja2 import Template
 from plumbum import SshMachine, local
-from plumbum.cmd import chmod, curl, rm, ssh, tar  # pylint: disable=import-error
+from plumbum.cmd import (  # pylint: disable=import-error
+    chmod,
+    curl,
+    rm,
+    ssh,
+    ssh_keygen,
+    tar,
+)
+from plumbum.commands.processes import ProcessExecutionError
 
 LOGGER = logging.getLogger("third_party_ci")
 dprint = LOGGER.debug
@@ -41,7 +48,7 @@ SUCCESS = 0
 FAIL = 1
 BASE_URL = "http://stkci.daterainc.com.s3-website-us-west-2.amazonaws.com/"
 LISTING_TEMPLATE = os.path.join(
-    os.path.dirname(os.path.abspath(__name__)), "listing.j2"
+    os.path.dirname(os.path.abspath(__file__)), "listing.j2"
 )
 
 
@@ -114,14 +121,17 @@ class ThirdParty:
         nocleanup=False,
     ):
         self.project = project
-        self.gerrit = Gerrit(ghost, guser, port=gport, keyfile=gkeyfile)
-        self.gerrit.ci_name = ci_name
+        self.ci_name = ci_name
         self.upload = upload
         self.aws_key_id = aws_key_id
         self.aws_secret_key = aws_secret_key
         self.remote_results_bucket = remote_bucket
         self.use_existing_devstack = use_existing_devstack
         self.nocleanup = nocleanup
+
+        self.ssh_gerrit = ssh[
+            "-i", gkeyfile, "-p", gport, f"{guser}@{ghost}",
+        ]
 
     def run_ci_on_patch(
         self,
@@ -132,7 +142,6 @@ class ThirdParty:
         patchset,
         cinder_driver_version,
         glance_driver_version,
-        node_keyfile=None,
     ):
         """
         This will actually run the CI logic.  If post_failed is set to `False`,
@@ -140,28 +149,45 @@ class ThirdParty:
         hopefully decrease our false failure rate.
         """
         dprint("Running against: %s", patchset)
-        patch_ref_name = patchset.replace("/", "-")
 
-        # Run tests on devstack
-        local.python[
-            DEVSTACK_FILE,
-            cluster_ip,
-            node_ip,
-            username,
-            password,
-            "--patchset",
-            patchset,
-            "--only-update-drivers",
-            "--glance-driver-version",
-            "none",
-            "--reimage-client" if not self.use_existing_devstack else None,
-        ]()
+        try:
+            # Run tests on devstack
+            local.python[
+                DEVSTACK_FILE,
+                cluster_ip,
+                node_ip,
+                username,
+                password,
+                "--patchset",
+                patchset,
+                "--only-update-drivers",
+                "--glance-driver-version",
+                "none",
+                "--skip-tox",
+                "--reimage-client" if not self.use_existing_devstack else None,
+            ]()
+        except ProcessExecutionError as error:
+            eprint(
+                "Devstack_up ran into an error. Still trying to figure out the"
+                "results, but this should be fixed"
+            )
+            eprint(error.stdout)
+
+        commit_id, success, log_location = self._upload_logs(
+            node_ip, username, password, patchset
+        )
+        if self.upload:
+            self._post_results(patchset, commit_id, success, log_location)
+
+    def _upload_logs(self, node_ip, username, password, patchset):
+        patch_ref_name = patchset.replace("/", "-")
 
         # Collect logs
         filename = f"{patch_ref_name}.tar.gz"
         tempfilename = f"/tmp/{filename}"
         tempfiledirectory = tempfilename.replace(".tar.gz", "")
 
+        dprint("SSHing: %s, %s, %s", node_ip, username, password)
         with SshMachine(node_ip, user=username, password=password) as devstack:
             devstack.upload(UPLOAD_FILE, "/tmp/upload_logs.sh")
             devstack["chmod"]("+x", "/tmp/upload_logs.sh")
@@ -184,40 +210,37 @@ class ThirdParty:
                 dprint("Commit ID: %s", commit_id)
             # Find failures
             success = re.search(r"Failed: 0", logs)
-            dprint("Success: %s", success)
+            if success:
+                dprint("Success:")
+            else:
+                dprint("Failure:")
 
         # Upload logs
-        # self._boto_up_data(patch_ref_name)
-        log_location = "".join((BASE_URL, patch_ref_name, "/index.html"))
-        # cleanup artifacts
+        self._boto_up_data(patch_ref_name)
+
+        # Cleanup artifacts
         if not self.nocleanup:
             rm["-rf", tempfiledirectory]()
 
-        # Post results
-        if self.upload:
-            if success:
-                msg = f'"* {self.gerrit.ci_name} {log_location} : SUCCESS " {commit_id}'
-            else:
-                msg = (
-                    f'"* {self.gerrit.ci_name} {log_location} : FAILURE \n'
-                    + f'You can rerun this CI by commenting run-Datera" {commit_id}'
-                )
-            cmd = ssh[
-                "-i",
-                self.gerrit.keyfile,
-                "-p",
-                "29418",
-                f"{self.gerrit.username}@review.opendev.org",
-                f"gerrit review -m '{msg}'",
-            ]
-            dprint("Posting gerrit results: %s", cmd)
-            cmd()
+        log_location = "".join((BASE_URL, patch_ref_name, "/index.html"))
+        return commit_id, success, log_location
 
+    def _post_results(self, patchset, commit_id, success, log_location):
+        dprint("Logs: %s", log_location)
+
+        # Post results
         if success:
-            iprint("SUCCESS: %s", patchset)
-        elif not success:
-            eprint("FAIL: %s", patchset)
-        iprint("LOGS: %s", log_location)
+            msg = f'"* {self.ci_name} {log_location} : SUCCESS "'
+            iprint("Gerrit results: %s", msg)
+        else:
+            msg = (
+                f'"* {self.ci_name} {log_location} : FAILURE \n'
+                + f'You can rerun this CI by commenting run-Datera"'
+            )
+            eprint("Gerrit results: %s", msg)
+        cmd = self.ssh_gerrit[f"gerrit review -m '{msg}' {commit_id}"]
+        dprint(" -- command: %s", cmd)
+        cmd()
 
     def _boto_up_data(self, data):
         dprint("Uploading Data: %s", data)
@@ -228,19 +251,26 @@ class ThirdParty:
         key.set_contents_from_string("")
         key.set_acl("public-read")
 
-        for subdir, _, files, in os.walk(data):
-            for file in files:
-                path = os.path.join(subdir, file)
-                dprint(path)
-                subkey = boto.s3.key.Key(bucket)
-                subkey.key = path
-                subkey.set_contents_from_filename(path)
-                subkey.set_acl("public-read")
+        curdir = os.path.abspath(os.curdir)
+        os.chdir("/tmp/")
+        try:
+            for subdir, _, files, in os.walk(data):
+                for file in files:
+                    path = os.path.join(subdir, file)
+                    dprint("-- path: %s", path)
+                    subkey = boto.s3.key.Key(bucket)
+                    subkey.key = path
+                    subkey.set_contents_from_filename(path)
+                    subkey.set_acl("public-read")
+        finally:
+            os.chdir(curdir)
 
     def _get_boto_bucket(self):
         access_key = self.aws_key_id
         secret_key = self.aws_secret_key
         bucket_name = self.remote_results_bucket
+
+        dprint("aws conf: %s, %s, %s", access_key, secret_key, bucket_name)
 
         conn = boto.s3.connect_to_region(
             "us-west-2",
@@ -248,6 +278,7 @@ class ThirdParty:
             aws_secret_access_key=secret_key,
             calling_format=OrdinaryCallingFormat(),
         )
+        dprint("conn: %s", conn)
         bucket = conn.get_bucket(bucket_name)
         return bucket
 
@@ -266,18 +297,12 @@ class ThirdParty:
         dprint("Deleted %s keys with a total size of %s", n, size)
 
 
-def watcher(key, user):
+def watcher(third_party):
     def _helper():
-        cmd = ssh[
-            "-i",
-            key,
-            "-p",
-            29418,
-            f"{user}@review.opendev.org",
-            "gerrit stream-events",
-        ]
-        dprint("Cmd: %s", cmd)
-        for line in iter(cmd.popen().stdout.readline, b""):
+        dprint("Cmd: %s", third_party.ssh_gerrit["gerrit stream-events"])
+        for line in iter(
+            third_party.ssh_gerrit["gerrit stream-events"].popen().stdout.readline, b""
+        ):
             event = json.loads(line)
             if event["type"] == "comment-added":
                 comment = event["comment"]
@@ -346,7 +371,6 @@ def runner(conf, third_party, upload):
                     patchref,
                     conf["cinder_driver_version"],
                     conf["glance_driver_version"],
-                    node_keyfile=conf["keyfile"],
                 )
                 iprint("Finished CI on: %s", patchref)
             except Exception:
@@ -401,6 +425,12 @@ def main():
         eprint("Missing required devstack_up.py file in current directory")
 
     conf = parse_config_file(args.config)
+
+    # Remove any offending keys
+    cmd = ssh_keygen["-R", conf["node_ip"]]
+    dprint(cmd)
+    cmd()
+
     third_party = ThirdParty(
         conf["project"],
         conf["host"],
@@ -425,29 +455,39 @@ def main():
             args.single_run_patchset,
             conf["cinder_driver_version"],
             conf["glance_driver_version"],
-            node_keyfile=conf["keyfile"],
         )
         return SUCCESS
 
     if args.upload_only:
+        dprint(
+            "SSHing: %s, %s, %s",
+            conf["node_ip"],
+            conf["node_user"],
+            conf["node_password"],
+        )
         with SshMachine(
-            conf["node_ip"], conf["node_user"], conf["node_password"]
+            conf["node_ip"], user=conf["node_user"], password=conf["node_password"]
         ) as devstack:
             with devstack.cwd("/opt/stack/cinder"):
                 head = devstack["git"]("rev-parse", "HEAD")
 
-        patchset = third_party.gerrit.query("{head} --patch-sets --format json")[
-            "patchSets"
-        ][-1]["ref"]
+        dprint("head: %s", head)
+        patchsets_json = third_party.ssh_gerrit(
+            f"gerrit query {head} --patch-sets --format json"
+        )
+        patchset = json.loads(patchsets_json.split("\n")[0])["patchSets"][-1]["ref"]
+        dprint("patchSet: %s", patchset)
         patchset = patchset.replace("/", "-")
-        # success, log_location, commit_id = third_party._upload_logs(
-        #     ssh, patchset, post_failed=False)
-        # third_party._post_results(ssh, success, log_location, commit_id)
+        commit_id, success, log_location = third_party._upload_logs(
+            conf["node_ip"], conf["node_user"], conf["node_password"], patchset
+        )
+        if args.upload:
+            third_party._post_results(patchset, commit_id, success, log_location)
         dprint(head)
         dprint(patchset)
         return SUCCESS
 
-    watcher(conf["gerrit_key"], conf["username"])
+    watcher(third_party)
     runner(conf, third_party, args.upload)
 
     while True:
