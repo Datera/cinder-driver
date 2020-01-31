@@ -281,6 +281,7 @@ def _update_drivers(ssh, mgmt_ip, patchset, cinder_version, glance_version):
     # Install cinder driver
     ssh.exec_command("rm -rf -- cinder-driver")
     ssh.exec_command("git clone {}".format(DAT_CINDER_URL))
+    ssh.exec_command("cd /opt/stack/cinder && git clean -f")
     ssh.exec_command("cd /opt/stack/cinder && git reset --hard")
     if patchset != "master":
         ssh.exec_command(
