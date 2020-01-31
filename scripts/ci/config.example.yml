@@ -1,0 +1,30 @@
+#
+# Example configuration for third_party_ci.py
+#
+
+---
+
+# Gerrit
+gerrit_key:  # Path to the SSH key registered in Gerrit
+username: datera-ci
+project: openstack/cinder
+host: review.opendev.org
+port: 29418
+ci_name: datera-dsvm-full
+
+# S3
+aws_key_id:
+aws_secret_key:
+remote_results_bucket: stkci.daterainc.com
+
+# Devstack node
+node_ip:
+node_user:
+node_password:
+
+# Datera cluster
+cluster_ip:
+
+# Driver versions
+cinder_driver_version: master
+glance_driver_version: master

@@ -1,5 +1,7 @@
 arrow
 boto
-gerritlib
 jinja2
 ruamel.yaml
+coloredlogs~=10.0
+plumbum~=1.6
+
