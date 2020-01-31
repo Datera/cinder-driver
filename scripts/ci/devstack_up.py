@@ -45,7 +45,7 @@ TEMPEST_WAIT = 3600
 INITIAL_SSH_TIMEOUT = 600
 DAT_CINDER_URL = "http://github.com/Datera/cinder-driver"
 DAT_GLANCE_URL = "http://github.com/Datera/glance-driver"
-DEV_DRIVER_LOC = "/opt/stack/cinder/cinder/volume/drivers/datera/"
+DEV_DRIVER_LOC = "/opt/stack/cinder/cinder/"
 DEV_GLANCE_CONF = "/etc/glance/glance-api.conf"
 
 LOCALCONF = r"""
@@ -295,11 +295,11 @@ def _update_drivers(ssh, mgmt_ip, patchset, cinder_version, glance_version):
     if cinder_version != "master":
         ssh.exec_command("cd cinder-driver && git checkout {}".format(
             cinder_version))
-    ssh.exec_command("cd cinder-driver/src/datera && cp *.py {}".format(
+    # Rsync the current directory tree from ./src to DEV_DRIVER_LOC
+    # Currently backup/ subdirectory excluded because of missing tests. FIXME
+    ssh.exec_command("cd cinder-driver/ && rsync -a --exclude '__init__.py'"
+                     "--exclude 'backup/' src/cinder/ {}".format(
         DEV_DRIVER_LOC))
-    cmd = ("cp /opt/stack/cinder-driver/src/datera/test_datera.py "
-        "/opt/stack/cinder/cinder/tests/unit/volume/drivers/test_datera.py")
-    ssh.exec_command(cmd)
 
     ssh.exec_command("sudo systemctl restart devstack@c-vol.service")
     ssh.exec_command("sudo systemctl restart devstack@c-sch.service")
