@@ -1,0 +1,38 @@
+FROM registry.access.redhat.com/rhosp13/openstack-cinder-volume
+MAINTAINER Datera Ecosystems Engineering g-ecosystems@datera.io
+
+LABEL name="datera-openstack-cinder-volume-rhosp13" \
+      maintainer="g-ecosystems@datera.io" \
+      vendor="Datera" \
+      version="1.1" \
+      release="1" \
+      summary="Red Hat OpenStack Platform 13.0 cinder-volume Datera Plugin" \
+      description="Red Hat OpenStack Platform 13.0 cinder-volume Datera Plugin"
+
+USER root
+
+ARG version="2019.12.10.0"
+RUN curl -L -o /tmp/driver.zip "https://github.com/Datera/cinder-driver/archive/${version}.zip"
+
+RUN yum clean all
+RUN yum-config-manager --enable rhel-7-server-openstack-13-rpms
+RUN yum-config-manager --enable rhel-server-rhscl-7-rpms
+RUN yum -y install unzip
+RUN yum -y install python27-python-pip
+RUN yum-config-manager --disable rhel-7-server-openstack-13-rpms
+RUN yum-config-manager --disable rhel-server-rhscl-7-rpms
+
+RUN cd /root && unzip /tmp/driver.zip
+
+# License
+RUN mkdir /licenses
+RUN cp /root/cinder-driver-${version}/LICENSE /licenses
+
+# Remove obsolete upstream driver
+RUN rm -rf /usr/lib/python2.7/site-packages/cinder/volume/drivers/datera
+# Copy driver files in place
+RUN cp -rf /root/cinder-driver-${version}/src/datera /usr/lib/python2.7/site-packages/cinder/volume/drivers/
+# Install python sdk
+RUN scl enable python27 "pip install -U dfs_sdk"
+
+USER cinder
