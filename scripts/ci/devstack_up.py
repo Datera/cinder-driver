@@ -297,7 +297,7 @@ def _update_drivers(ssh, mgmt_ip, patchset, cinder_version, glance_version):
             cinder_version))
     # Rsync the current directory tree from ./src to DEV_DRIVER_LOC
     # Currently backup/ subdirectory excluded because of missing tests. FIXME
-    ssh.exec_command("cd cinder-driver/ && rsync -a --exclude '__init__.py'"
+    ssh.exec_command("cd cinder-driver/ && rsync -a --exclude '__init__.py' "
                      "--exclude 'backup/' src/cinder/ {}".format(
         DEV_DRIVER_LOC))
 
