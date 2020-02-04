@@ -6,31 +6,11 @@ Datera Cinder Repository
 Datera Cinder Volume Driver Installation
 ----------------------------------------
 
-Via Pip
-
-.. code-block::
-
-    1. Run ``pip install datera_cinder`` in the virtualenv for the cinder-volume service
-    2. Modify ``/etc/cinder/cinder.conf``
-      * Under [DEFAULT]
-        * ``default_volume_type = datera``
-        * ``enabled_backends = datera``
-        * ``debug = True``
-      * Under [datera]
-        * ``volume_driver = datera_cinder.datera_iscsi.DateraDriver``
-        * ``san_ip = <datera_mgmt_ip>``
-        * ``san_login = <datera_username>``
-        * ``san_password = <datera_password>``
-        * ``volume_backend_name = datera``
-        * ``datera_tenant_id = <datera_tenant>``
-    3. Restart Cinder ``service cinder-volume restart``
-
-Via Source
-
 .. code-block::
 
     1. Clone Repository ``git clone http://github.com/Datera/cinder-driver``
     2. Copy Driver ``cd cinder-driver && cp src/datera/*.py /usr/local/lib/pythonX.X/dist-packages/cinder/volume/drivers/datera``
+    2. Copy Driver ``cd cinder-driver && rsync -a --exclude '__init__.py' --exclude 'backup/' src/cinder/ /usr/local/lib/pythonX.X/dist-packages/cinder``
     3. Install Python-SDK ``sudo pip install -U dfs_sdk``
     4. Modify ``/etc/cinder/cinder.conf``
       * Under [DEFAULT]
@@ -64,8 +44,8 @@ Here is an example to follow:
 .. code-block::
 
     $ git clone http://github.com/Datera/cinder-driver
-    $ cd cinder-driver/src/datera
-    $ yes | cp -ir *.py  /openstack/venvs/cinder-19.0.0.0rc2.dev43/lib/python2.7/site-packages/cinder/volume/drivers/datera
+    $ cd cinder-driver
+    $ rsync -a --exclude '__init__.py' --exclude 'backup/' src/cinder/ /openstack/venvs/cinder-19.0.0.0rc2.dev43/lib/python2.7/site-packages/cinder
     $ service cinder-volume restart
     $ source /openstack/venvs/cinder-19.0.0.0rc2.dev43/bin/activate
     (cinder-19.0.0.0rc2.dev43) $ pip install -U dfs_sdk
