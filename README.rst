@@ -9,7 +9,6 @@ Datera Cinder Volume Driver Installation
 .. code-block::
 
     1. Clone Repository ``git clone http://github.com/Datera/cinder-driver``
-    2. Copy Driver ``cd cinder-driver && cp src/datera/*.py /usr/local/lib/pythonX.X/dist-packages/cinder/volume/drivers/datera``
     2. Copy Driver ``cd cinder-driver && rsync -a --exclude '__init__.py' --exclude 'backup/' src/cinder/ /usr/local/lib/pythonX.X/dist-packages/cinder``
     3. Install Python-SDK ``sudo pip install -U dfs_sdk``
     4. Modify ``/etc/cinder/cinder.conf``
