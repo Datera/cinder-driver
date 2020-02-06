@@ -4,4 +4,4 @@ jinja2
 ruamel.yaml
 coloredlogs~=10.0
 plumbum~=1.6
-
+paramiko~=2.7
