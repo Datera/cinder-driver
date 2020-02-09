@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 import argparse
 import io
 import json
@@ -19,14 +17,8 @@ import ruamel.yaml as yaml
 from boto.s3.connection import OrdinaryCallingFormat
 from jinja2 import Template
 from plumbum import SshMachine, local
-from plumbum.cmd import (  # pylint: disable=import-error
-    chmod,
-    curl,
-    rm,
-    ssh,
-    ssh_keygen,
-    tar,
-)
+from plumbum.cmd import ssh  # pylint: disable=import-error
+from plumbum.cmd import chmod, curl, rm, ssh_keygen, tar
 from plumbum.commands.processes import ProcessExecutionError
 
 LOGGER = logging.getLogger("third_party_ci")
@@ -230,12 +222,12 @@ class ThirdParty:
 
         # Post results
         if success:
-            msg = f'"* {self.ci_name} {log_location} : SUCCESS "'
+            msg = f"* {self.ci_name} {log_location} : SUCCESS "
             iprint("Gerrit results: %s", msg)
         else:
             msg = (
-                f'"* {self.ci_name} {log_location} : FAILURE \n'
-                + f'You can rerun this CI by commenting run-Datera"'
+                f"* {self.ci_name} {log_location} : FAILURE \n"
+                + f"You can rerun this CI by commenting run-Datera"
             )
             eprint("Gerrit results: %s", msg)
         cmd = self.ssh_gerrit[f"gerrit review -m '{msg}' {commit_id}"]
@@ -305,11 +297,16 @@ def watcher(third_party):
         ):
             event = json.loads(line)
             if event["type"] == "comment-added":
-                comment = event["comment"]
-                author = event["author"]["username"]
-                project = event["change"]["project"]
-                patchSet = event["patchSet"]["ref"]
-                branch = event["change"]["branch"]
+                try:
+                    comment = event["comment"]
+                    author = event["author"]["username"]
+                    project = event["change"]["project"]
+                    patchSet = event["patchSet"]["ref"]
+                    branch = event["change"]["branch"]
+                except KeyError as err:
+                    eprint("Error parsing event. Line: %s", line)
+                    eprint(err)
+                    continue
                 if (
                     COND["ALL_EVENTS"]
                     or "Verified+2" in comment
@@ -475,7 +472,13 @@ def main():
         patchsets_json = third_party.ssh_gerrit(
             f"gerrit query {head} --patch-sets --format json"
         )
-        patchset = json.loads(patchsets_json.split("\n")[0])["patchSets"][-1]["ref"]
+        patchset_line = json.loads(patchsets_json.split("\n")[0])
+        if not "patchSets" in patchset_line:
+            eprint("Could not retrieve patchsets for %s", head)
+            dprint("Line: %s", patchset_line)
+            return FAIL
+
+        patchset = patchset_line["patchSets"][-1]["ref"]
         dprint("patchSet: %s", patchset)
         patchset = patchset.replace("/", "-")
         commit_id, success, log_location = third_party._upload_logs(

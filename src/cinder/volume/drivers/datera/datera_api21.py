@@ -22,11 +22,11 @@ import random
 import time
 import uuid
 
-from dfs_sdk import exceptions as dexceptions
 import eventlet
 from os_brick import exception as brick_exception
 from oslo_log import log as logging
 from oslo_serialization import jsonutils as json
+from oslo_utils import importutils
 from oslo_utils import units
 import six
 
@@ -43,9 +43,14 @@ except ImportError:
 
 LOG = logging.getLogger(__name__)
 
+dexceptions = importutils.try_import('dfs_sdk.exceptions')
+
 API_VERSION = "2.1"
 
 
+# The DateraAPI classes (2.1, 2.2) are enhanced by datera_common's lookup()
+# decorator which generates members run-time. Therefore on the class we disable
+# pylint's no-member check pylint: disable=no-member
 class DateraApi(object):
 
     # =================
@@ -970,6 +975,8 @@ class DateraApi(object):
     # ================
 
     def _get_volume_stats_2_1(self, refresh=False):
+        # cluster_stats is defined by datera_iscsi
+        # pylint: disable=access-member-before-definition
         if refresh or not self.cluster_stats:
             try:
                 LOG.debug("Updating cluster stats info.")

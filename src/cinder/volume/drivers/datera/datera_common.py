@@ -23,9 +23,9 @@ import time
 import types
 import uuid
 
-import dfs_sdk
 from glanceclient import exc as glance_exc
 from oslo_log import log as logging
+from oslo_utils import importutils
 
 from cinder import context
 from cinder import exception
@@ -35,6 +35,9 @@ from cinder.volume import qos_specs
 from cinder.volume import volume_types
 
 LOG = logging.getLogger(__name__)
+
+dfs_sdk = importutils.try_import('dfs_sdk')
+
 OS_PREFIX = "OS"
 UNMANAGE_PREFIX = "UNMANAGED"
 
