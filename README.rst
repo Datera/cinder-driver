@@ -57,7 +57,22 @@ Here is an example to follow:
     drwxr-xr-x  2 root root     87 May 30 20:21 dfs_sdk-1.2.22.dist-info
     $
 
+Note: If you are using RedHat Openstack version running Cinder inside a container, then install pip first and then install dfs_sdk.
 
+.. code-block::
+
+    [heat-admin@datera8-controller-0 ~]$ curl -o /tmp/get-pip.py https://bootstrap.pypa.io/get-pip.py
+    [heat-admin@datera8-controller-0 ~]$ sudo docker cp /tmp/get-pip.py c0cf3927de74:/usr
+    [heat-admin@datera8-controller-0 ~]$ sudo docker exec --user 0 -it c0cf3927de74 /bin/bash
+    ()[root@datera8-controller-0 usr]# python get-pip.py 
+    ()[root@datera8-controller-0 usr]# pip install -U dfs_sdk
+    ()[root@datera8-controller-0 usr]# pip freeze | grep sdk
+    dfs-sdk==1.2.25
+    openstacksdk==0.11.3
+    ()[root@datera8-controller-0 usr]#
+
+    c0cf3927de74 is the cinder container.
+    
 -----
 Usage
 -----
