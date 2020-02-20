@@ -482,6 +482,32 @@ class DateraApi(object):
             self._extend_volume_2_1(volume, volume['size'])
         self._add_vol_meta_2_1(volume)
 
+    # ========================
+    # = Revert To Snapshot =
+    # ========================
+
+    def _revert_to_snapshot_2_1(self, volume, snapshot):
+        # Handle case where snapshot is "managed"
+        dummy_vol = {'id': snapshot['volume_id'],
+                     'project_id': snapshot['project_id']}
+        tenant = self.get_tenant(dummy_vol['project_id'])
+        dvol = self.cvol_to_dvol(dummy_vol, tenant=tenant)
+        found_snap = None
+        provider_location = snapshot.get('provider_location')
+        if provider_location:
+            found_snap = dvol.snapshots.get(provider_location, tenant=tenant)
+        else:
+            snapshots = dvol.snapshots.list(tenant=tenant)
+            for snap in snapshots:
+                if snap.uuid == snapshot['id']:
+                    found_snap = snap
+                    break
+            else:
+                raise exception.SnapshotNotFound(snapshot_id=snapshot['id'])
+
+        self._snap_poll_2_1(found_snap, tenant)
+        dvol.set(tenant=tenant, restore_point=found_snap)
+
     # ==========
     # = Retype =
     # ==========

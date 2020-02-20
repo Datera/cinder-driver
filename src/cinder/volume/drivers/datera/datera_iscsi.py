@@ -285,6 +285,14 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
     def create_volume_from_snapshot(self, volume, snapshot):
         pass
 
+    # ========================
+    # = Revert To Snapshot =
+    # ========================
+
+    @datc.lookup
+    def revert_to_snapshot(self, volume, snapshot):
+        pass
+
     # ==========
     # = Retype =
     # ==========
