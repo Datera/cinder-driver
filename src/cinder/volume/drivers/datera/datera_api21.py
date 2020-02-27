@@ -486,7 +486,7 @@ class DateraApi(object):
     # = Revert To Snapshot =
     # ========================
 
-    def _revert_to_snapshot_2_1(self, volume, snapshot):
+    def _revert_to_snapshot_2_1(self, ctxt, volume, snapshot):
         # Handle case where snapshot is "managed"
         dummy_vol = {'id': snapshot['volume_id'],
                      'project_id': snapshot['project_id']}
@@ -506,7 +506,7 @@ class DateraApi(object):
                 raise exception.SnapshotNotFound(snapshot_id=snapshot['id'])
 
         self._snap_poll_2_1(found_snap, tenant)
-        dvol.set(tenant=tenant, restore_point=found_snap)
+        dvol.set(tenant=tenant, restore_point=found_snap.timestamp)
 
     # ==========
     # = Retype =
