@@ -278,19 +278,10 @@ def _install_devstack(ssh, version):
 def _update_drivers(ssh, mgmt_ip, patchset, cinder_version, glance_version):
     # Install python sdk to ensure we're using latest version
     ssh.exec_command("sudo pip install dfs_sdk")
-    # Install cinder driver
+
+    # Check out Datera cinder-driver
     ssh.exec_command("rm -rf -- cinder-driver")
-    ssh.exec_command("git clone {}".format(DAT_CINDER_URL))
-    ssh.exec_command("cd /opt/stack/cinder && git clean -f")
-    ssh.exec_command("cd /opt/stack/cinder && git reset --hard")
-    if patchset != "master":
-        ssh.exec_command(
-            "cd /opt/stack/cinder && git fetch "
-            "https://review.opendev.org/openstack/cinder {patchset} "
-            "&& git checkout FETCH_HEAD".format(patchset=patchset))
-    else:
-        ssh.exec_command(
-            "cd /opt/stack/cinder && git checkout master")
+    ssh.exec_command("git clone {} cinder-driver".format(DAT_CINDER_URL))
 
     if cinder_version != "master":
         ssh.exec_command("cd cinder-driver && git checkout {}".format(
@@ -300,6 +291,20 @@ def _update_drivers(ssh, mgmt_ip, patchset, cinder_version, glance_version):
     ssh.exec_command("cd cinder-driver/ && rsync -a --exclude '__init__.py' "
                      "--exclude 'backup/' src/cinder/ {}".format(
         DEV_DRIVER_LOC))
+
+    # Check out upstream cinder version. This might even overwrite the above copied Datera
+    # cinder-driver version if the patchset contains Datera-related changes
+    ssh.exec_command("cd /opt/stack/cinder && git clean -f")
+    ssh.exec_command("cd /opt/stack/cinder && git reset --hard")
+    if patchset != "master":
+        ssh.exec_command(
+            "cd /opt/stack/cinder && "
+            "git checkout . && "
+            "git fetch https://review.opendev.org/openstack/cinder {patchset} && "
+            "git checkout FETCH_HEAD".format(patchset=patchset))
+    else:
+        ssh.exec_command(
+            "cd /opt/stack/cinder && git checkout master")
 
     ssh.exec_command("sudo systemctl restart devstack@c-vol.service")
     ssh.exec_command("sudo systemctl restart devstack@c-sch.service")
