@@ -279,6 +279,12 @@ def _update_drivers(ssh, mgmt_ip, patchset, cinder_version, glance_version):
     # Install python sdk to ensure we're using latest version
     ssh.exec_command("sudo pip install dfs_sdk")
 
+    # Check out upstream cinder version and make sure it's clean master
+    ssh.exec_command("cd /opt/stack/cinder && git clean -f"
+                     "                     && git checkout master"
+                     "                     && git reset --hard"
+                     "                     && git pull")
+
     # Check out Datera cinder-driver
     ssh.exec_command("rm -rf -- cinder-driver")
     ssh.exec_command("git clone {} cinder-driver".format(DAT_CINDER_URL))
@@ -289,22 +295,16 @@ def _update_drivers(ssh, mgmt_ip, patchset, cinder_version, glance_version):
     # Rsync the current directory tree from ./src to DEV_DRIVER_LOC
     # Currently backup/ subdirectory excluded because of missing tests. FIXME
     ssh.exec_command("cd cinder-driver/ && rsync -a --exclude '__init__.py' "
-                     "--exclude 'backup/' src/cinder/ {}".format(
-        DEV_DRIVER_LOC))
+                     "--exclude 'backup/' src/cinder/ {}".format(DEV_DRIVER_LOC))
 
-    # Check out upstream cinder version. This might even overwrite the above copied Datera
-    # cinder-driver version if the patchset contains Datera-related changes
-    ssh.exec_command("cd /opt/stack/cinder && git clean -f")
-    ssh.exec_command("cd /opt/stack/cinder && git reset --hard")
+    # If a patchset is provided, overwrite the driver with the given patchset
+    # Useful for gerrit gating
     if patchset != "master":
         ssh.exec_command(
-            "cd /opt/stack/cinder && "
-            "git checkout . && "
-            "git fetch https://review.opendev.org/openstack/cinder {patchset} && "
-            "git checkout FETCH_HEAD".format(patchset=patchset))
-    else:
-        ssh.exec_command(
-            "cd /opt/stack/cinder && git checkout master")
+            "cd /opt/stack/cinder"
+            " && git checkout ."
+            " && git fetch https://review.opendev.org/openstack/cinder {patchset}"
+            " && git checkout FETCH_HEAD".format(patchset=patchset))
 
     ssh.exec_command("sudo systemctl restart devstack@c-vol.service")
     ssh.exec_command("sudo systemctl restart devstack@c-sch.service")
