@@ -288,6 +288,8 @@ def create_tenant(driver, project_id):
             driver.api.tenants.create(name=name)
         except dfs_sdk.exceptions.ApiConflictError:
             LOG.debug("Tenant {} already exists".format(name))
+        except dfs_sdk.exceptions.ApiError:
+            LOG.debug("Tenant {} cannot be created, make sure it exists".format(name))
     return _format_tenant(name)
 
 
