@@ -92,6 +92,8 @@ TEMPEST_VOLUME_DRIVER=DateraDriver
 TEMPEST_VOLUME_VENDOR=Datera
 TEMPEST_STORAGE_PROTOCOL=iSCSI
 
+disable_service horizon
+
 CINDER_BRANCH={patchset}
 
 [[post-config|/etc/cinder/cinder.conf]]
