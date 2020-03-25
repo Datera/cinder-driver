@@ -1,4 +1,4 @@
-FROM registry.redhat.io/rhosp-beta/openstack-cinder-volume
+FROM registry.redhat.io/rhosp-rhel8/openstack-cinder-volume:16.0-80
 MAINTAINER Datera Ecosystems Engineering g-ecosystems@datera.io
 
 LABEL name="datera-openstack-cinder-volume-rhosp16" \
@@ -14,7 +14,6 @@ USER root
 ARG version="2019.12.10.0"
 RUN curl -L -o /tmp/driver.zip "https://github.com/Datera/cinder-driver/archive/${version}.zip"
 
-RUN subscription-manager register --username Datera_partner --password Datera2018 --auto-attach
 RUN yum clean all
 RUN yum -y install yum-utils
 RUN dnf -y install python3-pip
