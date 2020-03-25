@@ -1,4 +1,4 @@
-FROM registry.redhat.io/rhosp-rhel8/openstack-cinder-volume:16.0-80
+FROM registry.redhat.io/rhosp-rhel8/openstack-cinder-volume:16.0
 MAINTAINER Datera Ecosystems Engineering g-ecosystems@datera.io
 
 LABEL name="datera-openstack-cinder-volume-rhosp16" \
