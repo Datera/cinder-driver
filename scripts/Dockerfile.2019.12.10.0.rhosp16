@@ -14,8 +14,6 @@ USER root
 ARG version="2019.12.10.0"
 RUN curl -L -o /tmp/driver.zip "https://github.com/Datera/cinder-driver/archive/${version}.zip"
 
-RUN yum clean all
-RUN yum -y install yum-utils
 RUN dnf -y install python3-pip
 RUN dnf -y install unzip
 
