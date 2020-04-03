@@ -1,4 +1,4 @@
-# Copyright 2017 Datera
+# Copyright 2020 Datera
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -12,8 +12,6 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
-from __future__ import absolute_import
 
 import contextlib
 import ipaddress
@@ -35,11 +33,8 @@ from cinder.i18n import _
 from cinder.image import image_utils
 from cinder import utils
 import cinder.volume.drivers.datera.datera_common as datc
-try:
-    from cinder.volume import utils as volutils
-except ImportError:
-    from cinder.volume import volume_utils as volutils
 from cinder.volume import volume_types
+from cinder.volume import volume_utils as volutils
 
 LOG = logging.getLogger(__name__)
 
@@ -128,7 +123,7 @@ class DateraApi(object):
     # =================
 
     def _extend_volume_2_2(self, volume, new_size):
-        if volume['size'] > new_size:
+        if volume['size'] >= new_size:
             LOG.warning("Volume size not extended due to original size being "
                         "greater or equal to new size. Original: "
                         "%(original)s, New: %(new)s",
@@ -375,11 +370,12 @@ class DateraApi(object):
             # within the existing acl. eacli --> existing acl initiator
             eacli = []
             for acl in existing_acl['initiators']:
-                if attachment is not None and \
-                   hasattr(attachment, 'connector') and \
-                   attachment.connector is not None and \
-                   acl['path'].split('/')[-1] == \
-                        attachment.connector['initiator']:
+                if (
+                    attachment is not None
+                    and attachment.connector is not None
+                    and acl['path'].split('/')[-1]
+                    == attachment.connector['initiator']
+                ):
                     continue
                 nacl = {}
                 nacl['path'] = acl['path']
@@ -582,7 +578,7 @@ class DateraApi(object):
         # managed, it must also be tenant A that makes this request.
         # This will be fixed in a later API update
         existing_ref = existing_ref['source-name']
-        app_inst_name, _, _, _ = datc._parse_vol_ref(existing_ref)
+        app_inst_name, __, __, __ = datc._parse_vol_ref(existing_ref)
         LOG.debug("Managing existing Datera volume %s  "
                   "Changing name to %s",
                   datc.get_name(volume), existing_ref)
@@ -601,7 +597,7 @@ class DateraApi(object):
 
     def _manage_existing_get_size_2_2(self, volume, existing_ref):
         existing_ref = existing_ref['source-name']
-        app_inst_name, storage_inst_name, vol_name, _ = datc._parse_vol_ref(
+        app_inst_name, storage_inst_name, vol_name, __ = datc._parse_vol_ref(
             existing_ref)
         dummy_vol = {'id': app_inst_name,
                      'project_id': volume['project_id']}
@@ -773,10 +769,10 @@ class DateraApi(object):
         except (exception.VolumeTypeNotFound, exception.InvalidVolumeType):
             found = None
         if not found:
-            msg = _("Invalid volume type: %s")
+            msg = "Invalid volume type: %s"
             LOG.error(msg, self.image_type)
-            raise ValueError("Option datera_image_cache_volume_type_id must be"
-                             " set to a valid volume_type id")
+            raise ValueError(_("Option datera_image_cache_volume_type_id must"
+                               " be set to a valid volume_type id"))
         # Check image format
         fmt = image_meta.get('disk_format', '')
         if fmt.lower() != 'raw':

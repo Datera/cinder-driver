@@ -1,4 +1,4 @@
-# Copyright 2017 Datera
+# Copyright 2020 Datera
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -12,8 +12,6 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
-from __future__ import absolute_import
 
 import functools
 import random
@@ -288,9 +286,6 @@ def create_tenant(driver, project_id):
             driver.api.tenants.create(name=name)
         except dfs_sdk.exceptions.ApiConflictError:
             LOG.debug("Tenant {} already exists".format(name))
-        except dfs_sdk.exceptions.ApiError:
-            LOG.debug("Tenant {} cannot be created, "
-                      "make sure it exists".format(name))
     return _format_tenant(name)
 
 
