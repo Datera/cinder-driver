@@ -188,9 +188,10 @@ class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
         * 2019.6.4.1 - Added Pypi packaging installation support
         * 2019.12.10.0 - Python 3.x support, tox tests, CI ready, live
                          migration support, image cache, bugfixes.
+        * 2020.4.4.0 - Upstreamed version in Ussuri
     """
 
-    VERSION = '2019.12.10.0'
+    VERSION = '2020.4.4.0'
 
     CI_WIKI_NAME = "datera-ci"
 

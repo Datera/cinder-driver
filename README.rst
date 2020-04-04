@@ -143,7 +143,7 @@ Datera Volume Driver Version History
 
    * - Version
      - Changes
-   * - 2020.3.20.0
+   * - 2020.4.4.0
      - Version upstreamed to Cinder community for Ussuri release. Mostly CI changes.
    * - 2019.12.10.0
      - Python 3.x support, tox tests, CI ready, live migration support, image cache, bugfixes.

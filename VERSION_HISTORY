@@ -69,3 +69,4 @@
 2019.2.25.0 - Scalability fixes and utility script updates
 2019.6.4.1 - Added Pypi packaging installation support
 2019.12.10.0 - Python 3.x support, tox tests, CI ready, live migration support, image cache, bugfixes.
+2020.4.40 - Upstreamed version in Ussuri
