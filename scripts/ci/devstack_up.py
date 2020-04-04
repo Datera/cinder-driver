@@ -62,8 +62,6 @@ ADMIN_PASSWORD=secrete
 SERVICE_PASSWORD=secrete
 SERVICE_TOKEN=111222333444
 LIBVIRT_TYPE=kvm
-CINDER_REPO=https://github.com/Datera/cinder.git
-CINDER_BRANCH=backport_train
 
 IP_VERSION=4
 USE_PYTHON3=True
@@ -94,7 +92,8 @@ TEMPEST_VOLUME_DRIVER=DateraDriver
 TEMPEST_VOLUME_VENDOR=Datera
 TEMPEST_STORAGE_PROTOCOL=iSCSI
 
-CINDER_BRANCH={patchset}
+CINDER_REPO=https://github.com/Datera/cinder.git
+CINDER_BRANCH=backport_train
 
 [[post-config|/etc/cinder/cinder.conf]]
 [DEFAULT]
@@ -221,6 +220,8 @@ def install_devstack(ssh, cluster_ip, tenant, patchset, version):
     ssh.exec_command(cmd)
     cmd = "sudo pip install --upgrade pip"
     ssh.exec_command(cmd)
+
+    ssh.exec_command("sudo pip install dfs_sdk")
 
     cmd = "rm -rf devstack"
     ssh.exec_command(cmd)
