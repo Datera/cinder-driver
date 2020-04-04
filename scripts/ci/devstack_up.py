@@ -62,6 +62,8 @@ ADMIN_PASSWORD=secrete
 SERVICE_PASSWORD=secrete
 SERVICE_TOKEN=111222333444
 LIBVIRT_TYPE=kvm
+CINDER_REPO=https://github.com/Datera/cinder.git
+CINDER_BRANCH=backport_train
 
 IP_VERSION=4
 USE_PYTHON3=True
@@ -465,8 +467,8 @@ def main(node_ip, username, password, cluster_ip, tenant, patchset,
 
         ssh = SSH(node_ip, 'stack', 'stack')
         install_devstack(ssh, cluster_ip, tenant, patchset, devstack_version)
-        _update_drivers(ssh, cluster_ip, patchset, cinder_driver_version,
-                        glance_driver_version)
+#        _update_drivers(ssh, cluster_ip, patchset, cinder_driver_version,
+#                        glance_driver_version)
 
     result = SUCCESS
     result2 = SUCCESS
