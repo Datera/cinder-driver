@@ -1,4 +1,4 @@
-# Copyright 2017 Datera
+# Copyright 2020 Datera
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -13,11 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from __future__ import absolute_import
-
 import time
 import uuid
-
 
 from eventlet.green import threading
 from oslo_config import cfg
@@ -27,6 +24,7 @@ import six
 
 from cinder import exception
 from cinder.i18n import _
+from cinder import interface
 from cinder import utils
 import cinder.volume.drivers.datera.datera_api21 as api21
 import cinder.volume.drivers.datera.datera_api22 as api22
@@ -63,10 +61,10 @@ d_opts = [
                 help="ONLY FOR DEBUG/TESTING PURPOSES\n"
                      "True to set replica_count to 1"),
     cfg.StrOpt('datera_tenant_id',
-               default='',
+               default=None,
                help="If set to 'Map' --> OpenStack project ID will be mapped "
                     "implicitly to Datera tenant ID\n"
-                    "If set to 'None' --> Datera tenant ID will not be used "
+                    "If set to None --> Datera tenant ID will not be used "
                     "during volume provisioning\n"
                     "If set to anything else --> Datera tenant ID will be the "
                     "provided value"),
@@ -106,9 +104,93 @@ CONF.register_opts(d_opts)
 
 
 @six.add_metaclass(utils.TraceWrapperWithABCMetaclass)
+@interface.volumedriver
 class DateraDriver(san.SanISCSIDriver, api21.DateraApi, api22.DateraApi):
+    """The OpenStack Datera iSCSI volume driver.
 
-    VERSION = '2020.3.20.0'
+    .. code-block:: none
+
+    Version history:
+        * 1.0 - Initial driver
+        * 1.1 - Look for lun-0 instead of lun-1.
+        * 2.0 - Update For Datera API v2
+        * 2.1 - Multipath, ACL and reorg
+        * 2.2 - Capabilites List, Extended Volume-Type Support
+                Naming convention change,
+                Volume Manage/Unmanage support
+        * 2.3 - Templates, Tenants, Snapshot Polling,
+                2.1 Api Version Support, Restructure
+        * 2.3.1 - Scalability bugfixes
+        * 2.3.2 - Volume Placement, ACL multi-attach bugfix
+        * 2.4.0 - Fast Retype Support
+        * 2.5.0 - Glance Image Caching, retyping/QoS bugfixes
+        * 2.6.0 - Api 2.2 support
+        * 2.6.1 - Glance interoperability fix
+        * 2.7.0 - IOPS/GB and BW/GB settings, driver level overrides
+                  (API 2.1+ only)
+        * 2.7.2 - Allowing DF: QoS Spec prefix, QoS type leak bugfix
+        * 2.7.3 - Fixed bug in clone_image where size was not set correctly
+        * 2.7.4 - Fix for create_tenant incorrect API call
+                  Temporary fix for DAT-15931
+        * 2.7.5 - Removed "force" parameter from /initiators v2.1 API requests
+        * 2.8.0 - iops_per_gb and bandwidth_per_gb are now limited by
+                  total_iops_max and total_bandwidth_max (API 2.1+ only)
+                  Bugfix for cinder retype with online volume
+        * 2.8.1 - Bugfix for missing default dict during retype
+        * 2.8.2 - Updated most retype operations to not detach volume
+        * 2.8.3 - Bugfix for not allowing fast clones for shared/community
+                  volumes
+        * 2.8.4 - Fixed missing API version pinning in _offline_flip
+        * 2.8.5 - Membership check for fast image cloning. Metadata API pinning
+        * 2.8.6 - Added LDAP support and CHAP support
+        * 2.8.7 - Bugfix for missing tenancy calls in offline_flip
+        * 2.9.0 - Volumes now correctly renamed during backend migration.
+                  Implemented update_migrated_volume (API 2.1+ only),
+                  Prevent non-raw image cloning
+        * 2.9.1 - Added extended metadata attributes during volume creation
+                  and attachment.  Added datera_disable_extended_metadata
+                  option to disable it.
+        * 2.9.2 - Made ensure_export a no-op.  Removed usage of
+                  initiator-groups
+        * 2018.4.5.0 - Switch to new date-based versioning scheme.  Removed v2
+                       API support
+        * 2018.4.17.1 - Bugfixes to IP Pools, Templates and Initiators
+        * 2018.4.25.0 - Snapshot Manage.  List Manageable Snapshots support
+        * 2018.4.27.0 - Major driver revamp/restructure, no functionality
+                        change
+        * 2018.5.1.0 - Bugfix for Map tenant auto-creation
+        * 2018.5.18.0 - Bugfix for None tenant handling
+        * 2018.6.7.0 - Bugfix for missing project_id during image clone
+        * 2018.7.13.0 - Massive update porting to use the Datera Python-SDK
+        * 2018.7.20.0 - Driver now includes display_name in created backend
+                        app_instances.
+        * 2018.9.17.0 - Requirements and doc changes
+        * 2018.10.8.0 - Added extra_headers to Python-SDK constructor call.
+                        This allows for the SDK to send the type of driver
+                        performing each request along with the request. This
+                        functionality existed before the Python-SDK revamp, so
+                        this change adds the functionality back in.
+        * 2018.10.8.1 - Adding thread_local to Python-SDK constructor call.
+                        This preserves trace_id in the logs
+        * 2018.10.30.0 - Adding template_override support.  Added
+                         datera_disable_template_override cfgOpt to disable
+                         this feature. Updated required requests version to
+                         >=2.20.0 because of a security vulnerability in
+                         <=2.19.X. Added support for filter_function and
+                         goodness_function.
+        * 2018.11.1.0 - Adding flash and hybrid capacity info to
+                        get_volume_stats
+        * 2018.11.8.0 - Fixing bug that broke 2.2.X support
+        * 2018.11.14.0 - Bugfixes for v2.1 API support and unicode character
+                         support
+        * 2019.1.24.0 - Python-SDK requirements update, README updates
+        * 2019.2.25.0 - Scalability fixes and utility script updates
+        * 2019.6.4.1 - Added Pypi packaging installation support
+        * 2019.12.10.0 - Python 3.x support, tox tests, CI ready, live
+                         migration support, image cache, bugfixes.
+    """
+
+    VERSION = '2019.12.10.0'
 
     CI_WIKI_NAME = "datera-ci"
 

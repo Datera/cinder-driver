@@ -1,4 +1,4 @@
-# Copyright 2015 Datera
+# Copyright 2020 Datera
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -13,12 +13,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from __future__ import absolute_import
-
 import sys
+from unittest import mock
 import uuid
-
-import mock
 
 from cinder import context
 from cinder import exception
