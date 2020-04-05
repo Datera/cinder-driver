@@ -93,7 +93,7 @@ TEMPEST_VOLUME_VENDOR=Datera
 TEMPEST_STORAGE_PROTOCOL=iSCSI
 
 CINDER_REPO=https://github.com/Datera/cinder.git
-CINDER_BRANCH=backport_train
+CINDER_BRANCH=train_datera_driver_backport
 
 [[post-config|/etc/cinder/cinder.conf]]
 [DEFAULT]
