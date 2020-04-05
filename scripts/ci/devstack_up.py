@@ -279,6 +279,8 @@ def _install_devstack(ssh, version):
 def _update_drivers(ssh, mgmt_ip, patchset, cinder_version, glance_version):
     # Install python sdk to ensure we're using latest version
     ssh.exec_command("sudo pip install dfs_sdk")
+    ssh.exec_command("sudo systemctl restart devstack@c-vol.service")
+    ssh.exec_command("sudo systemctl restart devstack@c-sch.service")
     return
 
     # Check out upstream cinder version and make sure it's clean master
@@ -467,8 +469,8 @@ def main(node_ip, username, password, cluster_ip, tenant, patchset,
 
         ssh = SSH(node_ip, 'stack', 'stack')
         install_devstack(ssh, cluster_ip, tenant, patchset, devstack_version)
-#        _update_drivers(ssh, cluster_ip, patchset, cinder_driver_version,
-#                        glance_driver_version)
+        _update_drivers(ssh, cluster_ip, patchset, cinder_driver_version,
+                        glance_driver_version)
 
     result = SUCCESS
     result2 = SUCCESS
