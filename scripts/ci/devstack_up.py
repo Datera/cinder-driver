@@ -221,7 +221,9 @@ def install_devstack(ssh, cluster_ip, tenant, patchset, version):
     cmd = "sudo pip install --upgrade pip"
     ssh.exec_command(cmd)
 
-    ssh.exec_command("sudo pip install dfs_sdk")
+    ssh.exec_command("sudo pip list | grep sdk >> pip.log")
+    ssh.exec_command("sudo pip install --verbose dfs_sdk >> pip.log")
+    ssh.exec_command("sudo pip list | grep sdk >> pip.log")
 
     cmd = "rm -rf devstack"
     ssh.exec_command(cmd)
