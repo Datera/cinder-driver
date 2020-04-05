@@ -221,10 +221,6 @@ def install_devstack(ssh, cluster_ip, tenant, patchset, version):
     cmd = "sudo pip install --upgrade pip"
     ssh.exec_command(cmd)
 
-    ssh.exec_command("sudo pip list | grep sdk >> pip.log")
-    ssh.exec_command("sudo pip install --verbose dfs_sdk >> pip.log")
-    ssh.exec_command("sudo pip list | grep sdk >> pip.log")
-
     cmd = "rm -rf devstack"
     ssh.exec_command(cmd)
 
@@ -283,6 +279,7 @@ def _install_devstack(ssh, version):
 def _update_drivers(ssh, mgmt_ip, patchset, cinder_version, glance_version):
     # Install python sdk to ensure we're using latest version
     ssh.exec_command("sudo pip install dfs_sdk")
+    return
 
     # Check out upstream cinder version and make sure it's clean master
     ssh.exec_command("cd /opt/stack/cinder && git clean -f"
