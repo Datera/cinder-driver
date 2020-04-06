@@ -93,7 +93,7 @@ TEMPEST_VOLUME_VENDOR=Datera
 TEMPEST_STORAGE_PROTOCOL=iSCSI
 
 CINDER_REPO=https://github.com/Datera/cinder.git
-CINDER_BRANCH=datera_stein_backport
+CINDER_BRANCH=datera_rocky_backport
 
 [[post-config|/etc/cinder/cinder.conf]]
 [DEFAULT]
