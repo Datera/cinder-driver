@@ -14,7 +14,7 @@
 #    under the License.
 
 import sys
-from unittest import mock
+import mock
 import uuid
 
 from cinder import context
