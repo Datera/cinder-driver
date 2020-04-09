@@ -92,7 +92,8 @@ TEMPEST_VOLUME_DRIVER=DateraDriver
 TEMPEST_VOLUME_VENDOR=Datera
 TEMPEST_STORAGE_PROTOCOL=iSCSI
 
-CINDER_BRANCH={patchset}
+CINDER_REPO={cinder_repo}
+CINDER_BRANCH={cinder_branch}
 
 [[post-config|/etc/cinder/cinder.conf]]
 [DEFAULT]
@@ -212,7 +213,7 @@ def setup_stack_user(ssh):
     stdin.write('stack\n')
     stdin.write('stack\n')
 
-def install_devstack(ssh, cluster_ip, tenant, patchset, version):
+def install_devstack(ssh, cluster_ip, tenant, cinder_repo, cinder_branch, version):
     print("Installing Devstack...")
 
     cmd = "sudo apt-get install python-pip -y"
@@ -225,10 +226,18 @@ def install_devstack(ssh, cluster_ip, tenant, patchset, version):
 
     cmd = "git clone http://github.com/openstack-dev/devstack"
     ssh.exec_command(cmd)
+
+    if cinder_branch == "master":
+        # the cinder version is not specifically specified,
+        # in this case use the default cinder version corresponding to
+        # the version of devstack
+        cinder_branch = version;
+
     lcnf = LOCALCONF.format(
         mgmt_ip=cluster_ip,
         tenant=tenant,
-        patchset=patchset)
+        cinder_repo=cinder_repo,
+        cinder_branch=cinder_branch)
     ssh.exec_command('echo "{}" > devstack/local.conf'.format(lcnf))
     if _install_devstack(ssh, version) == "SetupTools":
         # For some reason this is removed by devstack during initial setup
@@ -275,10 +284,7 @@ def _install_devstack(ssh, version):
                                "completed")
 
 
-def _update_drivers(ssh, mgmt_ip, patchset, cinder_version, glance_version):
-    # Install python sdk to ensure we're using latest version
-    ssh.exec_command("sudo pip install dfs_sdk")
-
+def _update_drivers(ssh, mgmt_ip, patchset, cinder_driver_version, glance_version):
     # Check out upstream cinder version and make sure it's clean master
     ssh.exec_command("cd /opt/stack/cinder && git clean -f"
                      "                     && git checkout master"
@@ -289,9 +295,9 @@ def _update_drivers(ssh, mgmt_ip, patchset, cinder_version, glance_version):
     ssh.exec_command("rm -rf -- cinder-driver")
     ssh.exec_command("git clone {} cinder-driver".format(DAT_CINDER_URL))
 
-    if cinder_version != "master":
+    if cinder_driver_version != "master":
         ssh.exec_command("cd cinder-driver && git checkout {}".format(
-            cinder_version))
+            cinder_driver_version))
     # Rsync the current directory tree from ./src to DEV_DRIVER_LOC
     # Currently backup/ subdirectory excluded because of missing tests. FIXME
     ssh.exec_command("cd cinder-driver/ && rsync -a --exclude '__init__.py' "
@@ -389,6 +395,13 @@ def run_tempest(ssh):
         raise EnvironmentError("Timeout expired before tempest tests "
                                "completed")
 
+def install_dfs_sdk(ssh):
+    # Install python sdk to ensure we're using latest version
+    ssh.exec_command("sudo pip install dfs_sdk")
+
+    ssh.exec_command("sudo systemctl restart devstack@c-vol.service")
+    ssh.exec_command("sudo systemctl restart devstack@c-sch.service")
+
 def run_tox(ssh):
     ssh.exec_command("sudo apt-get -y install python3-dev")
     ssh.exec_command("sudo apt-get -y install python3.7-dev")
@@ -443,9 +456,9 @@ def reinstall_node(ip, username, password):
     print("Ubuntu node ready...")
 
 def main(node_ip, username, password, cluster_ip, tenant, patchset,
-         skip_tempest, skip_tox,
-         devstack_version, cinder_driver_version, glance_driver_version,
-         only_update_drivers, reimage_client):
+         skip_tempest, skip_tox, devstack_version, cinder_repo, cinder_branch,
+         cinder_driver_version, glance_driver_version,
+         only_update_drivers, do_not_update_driver, reimage_client):
 
     if only_update_drivers:
         if args.keyfile:
@@ -464,9 +477,11 @@ def main(node_ip, username, password, cluster_ip, tenant, patchset,
         disable_ipv6(root_ssh)
 
         ssh = SSH(node_ip, 'stack', 'stack')
-        install_devstack(ssh, cluster_ip, tenant, patchset, devstack_version)
-        _update_drivers(ssh, cluster_ip, patchset, cinder_driver_version,
-                        glance_driver_version)
+        install_devstack(ssh, cluster_ip, tenant, cinder_repo, cinder_branch, devstack_version)
+        install_dfs_sdk(ssh)
+        if not do_not_update_driver:
+            _update_drivers(ssh, cluster_ip, patchset, cinder_driver_version,
+                            glance_driver_version)
 
     result = SUCCESS
     result2 = SUCCESS
@@ -505,12 +520,30 @@ if __name__ == '__main__':
     parser.add_argument('--cinder-driver-version', default='master')
     parser.add_argument('--glance-driver-version', default='master')
     parser.add_argument('--devstack-version', default='master')
+    parser.add_argument('--cinder-repo', default='https://github.com/openstack/cinder')
+    parser.add_argument('--cinder-branch', default='master')
+# These parameters allow to run the script against a private cinder branch,
+# like: https://github.com/Datera/cinder/tree/datera_stein_backport
+
+# For this example, the parameters would be:
+# ...
+# --cinder-repo="https://github.com/Datera/cinder"
+# --cinder-branch="datera_stein_backport"
+
+# By default, the script will use
+# --cinder-repo="https://github.com/openstack/cinder"
+# --cinder-branch="master"
+
+# cinder-branch overrides any version of devstack!!
+# E.g., you could run devstack-version = stable/train, but
+# cinder-branch = stable/stein
     parser.add_argument('--tenant', default='')
     parser.add_argument('--patchset', default='master')
     parser.add_argument('--skip-tempest', action='store_true')
     parser.add_argument('--skip-tox', action='store_true')
     parser.add_argument('--reimage-client', action='store_true')
     parser.add_argument('--only-update-drivers', action='store_true')
+    parser.add_argument('--do-not-update-driver', action='store_true')
     args = parser.parse_args()
     if args.password in {"", "none", "None"}:
         args.password = None
@@ -525,7 +558,10 @@ if __name__ == '__main__':
         args.skip_tempest,
         args.skip_tox,
         args.devstack_version,
+        args.cinder_repo,
+        args.cinder_branch,
         args.cinder_driver_version,
         args.glance_driver_version,
         args.only_update_drivers,
+        args.do_not_update_driver,
         args.reimage_client))
