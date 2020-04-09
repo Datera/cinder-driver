@@ -11,22 +11,25 @@ LABEL name="datera-openstack-cinder-volume-rhosp16" \
 
 USER root
 
-ARG version="2019.12.10.0"
-RUN curl -L -o /tmp/driver.zip "https://github.com/Datera/cinder-driver/archive/${version}.zip"
-
+# Install pip
 RUN dnf -y install python3-pip
+# Install unzip
 RUN dnf -y install unzip
 
+# bring in and unzip the driver
+ARG version="2019.12.10.0"
+RUN curl -L -o /tmp/driver.zip "https://github.com/Datera/cinder-driver/archive/${version}.zip"
 RUN cd /root && unzip /tmp/driver.zip
+RUN rm -rf /tmp/driver.zip
+
+COPY openstack-cinder-*.rpm /tmp/
+COPY python3-cinder-*.rpm /tmp/
+RUN rpm -Uvh /tmp/*.rpm && rm -f /tmp/*.rpm
 
 # License
 RUN mkdir /licenses
 RUN cp /root/cinder-driver-${version}/LICENSE /licenses
-
-# Remove obsolete upstream driver
-RUN rm -rf /usr/lib/python3.6/site-packages/cinder/volume/drivers/datera
-# Copy driver files in place
-RUN cp -rf /root/cinder-driver-${version}/src/datera /usr/lib/python3.6/site-packages/cinder/volume/drivers/
+RUN rm -rf /root/cinder-driver-${version}
 
 # Install python sdk
 RUN pip3 install -U dfs_sdk
