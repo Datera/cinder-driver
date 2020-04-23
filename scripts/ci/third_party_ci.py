@@ -142,6 +142,11 @@ class ThirdParty:
         """
         dprint("Running against: %s", patchset)
 
+        # Remove any offending keys
+        cmd = ssh_keygen["-R", node_ip]
+        dprint(cmd)
+        cmd()
+
         try:
             # Run tests on devstack
             local.python[
@@ -169,15 +174,22 @@ class ThirdParty:
             node_ip, username, password, patchset
         )
         if self.upload:
-            self._post_results(patchset, commit_id, success, log_location)
+            self._post_results(commit_id, success, log_location)
 
     def _upload_logs(self, node_ip, username, password, patchset):
-        patch_ref_name = patchset.replace("/", "-")
+        patch_ref_name = os.environ.get(
+            "GERRIT_PATCHSET_REVISION", patchset.replace("/", "-")
+        )
 
         # Collect logs
         filename = f"{patch_ref_name}.tar.gz"
         tempfilename = f"/tmp/{filename}"
         tempfiledirectory = tempfilename.replace(".tar.gz", "")
+
+        # Remove any offending keys
+        cmd = ssh_keygen["-R", node_ip]
+        dprint(cmd)
+        cmd()
 
         dprint("SSHing: %s, %s, %s", node_ip, username, password)
         with SshMachine(node_ip, user=username, password=password) as devstack:
@@ -217,7 +229,7 @@ class ThirdParty:
         log_location = "".join((BASE_URL, patch_ref_name, "/index.html"))
         return commit_id, success, log_location
 
-    def _post_results(self, patchset, commit_id, success, log_location):
+    def _post_results(self, commit_id, success, log_location):
         dprint("Logs: %s", log_location)
 
         # Post results
@@ -480,12 +492,11 @@ def main():
 
         patchset = patchset_line["patchSets"][-1]["ref"]
         dprint("patchSet: %s", patchset)
-        patchset = patchset.replace("/", "-")
         commit_id, success, log_location = third_party._upload_logs(
             conf["node_ip"], conf["node_user"], conf["node_password"], patchset
         )
         if args.upload:
-            third_party._post_results(patchset, commit_id, success, log_location)
+            third_party._post_results(commit_id, success, log_location)
         dprint(head)
         dprint(patchset)
         return SUCCESS
