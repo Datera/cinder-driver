@@ -37,7 +37,8 @@ DEVSTACK_FILE = os.path.join(
 )
 
 SUCCESS = 0
-FAIL = 1
+FAIL = 255
+UNSTABLE = 254
 BASE_URL = "http://stkci.daterainc.com.s3-website-us-west-2.amazonaws.com/"
 LISTING_TEMPLATE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "listing.j2"
@@ -169,12 +170,17 @@ class ThirdParty:
                 "results, but this should be fixed"
             )
             eprint(error.stdout)
+            return UNSTABLE
 
         commit_id, success, log_location = self._upload_logs(
             node_ip, username, password, patchset
         )
         if self.upload:
             self._post_results(commit_id, success, log_location)
+        if success:
+            return SUCCESS
+        else:
+            return FAIL
 
     def _upload_logs(self, node_ip, username, password, patchset):
         patch_ref_name = os.environ.get(
@@ -456,7 +462,7 @@ def main():
     )
 
     if args.single_run_patchset:
-        third_party.run_ci_on_patch(
+        return third_party.run_ci_on_patch(
             conf["node_ip"],
             conf["node_user"],
             conf["node_password"],
@@ -465,7 +471,6 @@ def main():
             conf["cinder_driver_version"],
             conf["glance_driver_version"],
         )
-        return SUCCESS
 
     if args.upload_only:
         dprint(
@@ -499,7 +504,10 @@ def main():
             third_party._post_results(commit_id, success, log_location)
         dprint(head)
         dprint(patchset)
-        return SUCCESS
+        if success:
+            return SUCCESS
+        else:
+            return FAIL
 
     watcher(third_party)
     runner(conf, third_party, args.upload)
