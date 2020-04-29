@@ -11,9 +11,7 @@ LABEL name="datera-openstack-cinder-volume-rhosp13" \
 
 USER root
 
-ARG version="2019.12.10.0"
-RUN curl -L -o /tmp/driver.zip "https://github.com/Datera/cinder-driver/archive/${version}.zip"
-
+# Install pip & unzip
 RUN yum clean all
 RUN yum-config-manager --enable rhel-7-server-openstack-13-rpms
 RUN yum-config-manager --enable rhel-server-rhscl-7-rpms
@@ -22,16 +20,21 @@ RUN yum -y install python27-python-pip
 RUN yum-config-manager --disable rhel-7-server-openstack-13-rpms
 RUN yum-config-manager --disable rhel-server-rhscl-7-rpms
 
+# bring in and unzip the driver
+ARG version="2019.12.10.0"
+RUN curl -L -o /tmp/driver.zip "https://github.com/Datera/cinder-driver/archive/${version}.zip"
 RUN cd /root && unzip /tmp/driver.zip
+RUN rm -rf /tmp/driver.zip
+
+COPY openstack-cinder-12*.rpm /tmp/
+COPY python-cinder-12*.rpm /tmp/
+RUN rpm -Uvh /tmp/*.rpm && rm -f /tmp/*.rpm
 
 # License
 RUN mkdir /licenses
 RUN cp /root/cinder-driver-${version}/LICENSE /licenses
+RUN rm -rf /root/cinder-driver-${version}
 
-# Remove obsolete upstream driver
-RUN rm -rf /usr/lib/python2.7/site-packages/cinder/volume/drivers/datera
-# Copy driver files in place
-RUN cp -rf /root/cinder-driver-${version}/src/datera /usr/lib/python2.7/site-packages/cinder/volume/drivers/
 # Install python sdk
 RUN scl enable python27 "pip install -U dfs_sdk"
 
