@@ -22,8 +22,11 @@ RUN curl -L -o /tmp/driver.zip "https://github.com/Datera/cinder-driver/archive/
 RUN cd /root && unzip /tmp/driver.zip
 RUN rm -rf /tmp/driver.zip
 
-COPY openstack-cinder-*.rpm /tmp/
-COPY python3-cinder-*.rpm /tmp/
+# bring in RH built RPMs
+ARG os_cinder_rpm="openstack-cinder-15.1.1-0.20200403213515.cfa2d1b.el8ost.noarch.rpm"
+ARG python_cinder_rpm="python3-cinder-15.1.1-0.20200403213515.cfa2d1b.el8ost.noarch.rpm"
+RUN curl -L -o /tmp/${os_cinder_rpm} https://github.com/Datera/cinder-driver/blob/master/scripts/third_party/${os_cinder_rpm}?raw=true
+RUN curl -L -o /tmp/${python_cinder_rpm} https://github.com/Datera/cinder-driver/blob/master/scripts/third_party/${python_cinder_rpm}?raw=true
 RUN rpm -Uvh /tmp/*.rpm && rm -f /tmp/*.rpm
 
 # License
