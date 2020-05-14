@@ -1,24 +1,20 @@
-FROM registry.access.redhat.com/rhosp13/openstack-cinder-volume
+FROM registry.redhat.io/rhosp-rhel8/openstack-cinder-volume:16.0
 MAINTAINER Datera Ecosystems Engineering g-ecosystems@datera.io
 
-LABEL name="datera-openstack-cinder-volume-rhosp13" \
+LABEL name="datera-openstack-cinder-volume-rhosp16" \
       maintainer="g-ecosystems@datera.io" \
       vendor="Datera" \
       version="1.1" \
       release="1" \
-      summary="Red Hat OpenStack Platform 13.0 cinder-volume Datera Plugin" \
-      description="Red Hat OpenStack Platform 13.0 cinder-volume Datera Plugin"
+      summary="Red Hat OpenStack Platform 16.0 cinder-volume Datera Plugin" \
+      description="Red Hat OpenStack Platform 16.0 cinder-volume Datera Plugin"
 
 USER root
 
-# Install pip & unzip
-RUN yum clean all
-RUN yum-config-manager --enable rhel-7-server-openstack-13-rpms
-RUN yum-config-manager --enable rhel-server-rhscl-7-rpms
-RUN yum -y install unzip
-RUN yum -y install python27-python-pip
-RUN yum-config-manager --disable rhel-7-server-openstack-13-rpms
-RUN yum-config-manager --disable rhel-server-rhscl-7-rpms
+# Install pip
+RUN dnf -y install python3-pip
+# Install unzip
+RUN dnf -y install unzip
 
 # bring in and unzip the driver
 ARG version="2019.12.10.0"
@@ -27,8 +23,8 @@ RUN cd /root && unzip /tmp/driver.zip
 RUN rm -rf /tmp/driver.zip
 
 # bring in RH built RPMs
-ARG os_cinder_rpm="openstack-cinder-12.0.10-7.el7ost.noarch.rpm"
-ARG python_cinder_rpm="python-cinder-12.0.10-7.el7ost.noarch.rpm"
+ARG os_cinder_rpm="openstack-cinder-15.1.1-0.20200403213515.cfa2d1b.el8ost.noarch.rpm"
+ARG python_cinder_rpm="python3-cinder-15.1.1-0.20200403213515.cfa2d1b.el8ost.noarch.rpm"
 RUN curl -L -o /tmp/${os_cinder_rpm} https://github.com/Datera/cinder-driver/blob/master/scripts/third_party/${os_cinder_rpm}?raw=true
 RUN curl -L -o /tmp/${python_cinder_rpm} https://github.com/Datera/cinder-driver/blob/master/scripts/third_party/${python_cinder_rpm}?raw=true
 RUN rpm -Uvh /tmp/*.rpm && rm -f /tmp/*.rpm
@@ -39,6 +35,6 @@ RUN cp /root/cinder-driver-${version}/LICENSE /licenses
 RUN rm -rf /root/cinder-driver-${version}
 
 # Install python sdk
-RUN scl enable python27 "pip install -U dfs_sdk"
+RUN pip3 install -U dfs_sdk
 
 USER cinder
