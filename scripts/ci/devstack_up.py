@@ -397,6 +397,7 @@ def run_tempest(ssh):
 
 def install_dfs_sdk(ssh):
     # Install python sdk to ensure we're using latest version
+    ssh.exec_command("pip install dfs_sdk")
     ssh.exec_command("sudo pip install dfs_sdk")
 
     ssh.exec_command("sudo systemctl restart devstack@c-vol.service")
