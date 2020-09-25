@@ -360,6 +360,10 @@ class DateraApi(object):
 
     def _detach_volume_2_2(self, context, volume, attachment=None):
         try:
+            LOG.debug("attachment = ", attachment)
+            if attachment is not None:
+                LOG.debug("attachment connector = ", attachment.connector)
+                LOG.debug("attachment connector initiator = ", attachment.connector['initiator'])
             tenant = self.get_tenant(volume['project_id'])
             ai = self.cvol_to_ai(volume, tenant=tenant)
             # Clear out ACL for this specific attachment
@@ -370,11 +374,15 @@ class DateraApi(object):
             # within the existing acl. eacli --> existing acl initiator
             eacli = []
             for acl in existing_acl['initiators']:
-                if attachment is not None and \
-                   hasattr(attachment, 'connector') and \
-                   attachment.connector is not None and \
-                   acl['path'].split('/')[-1] == \
-                        attachment.connector['initiator']:
+                LOG.debug("acl path = ", acl['path'])
+                LOG.debug("acl path split -1 = ", acl['path'].split('/')[-1])
+                if (
+                    attachment is not None
+                    and attachment.connector is not None
+                    and acl['path'].split('/')[-1]
+                    == attachment.connector['initiator']
+                ):
+                    LOG.debug("removed ", attachment.connector['initiator'])
                     continue
                 nacl = {}
                 nacl['path'] = acl['path']
